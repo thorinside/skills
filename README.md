@@ -7,7 +7,7 @@ Agent skills, packaged both as a **Claude Code plugin** and in the standard
 
 | Skill | What it does |
 |---|---|
-| [`decision-free-specs`](skills/decision-free-specs/SKILL.md) | Write refactor specs/plans a local ~27B model (e.g. Qwen3.6-27B) can execute with zero architectural decisions. Language-agnostic workflow; per-language AST inventory tools replace the expensive read-the-codebase step (TypeScript available; Python/Rust/Dart pluggable via a documented contract). |
+| [`decision-free-specs`](skills/decision-free-specs/SKILL.md) | Write refactor specs/plans a local ~27B model (e.g. Qwen3.6-27B) can execute with zero architectural decisions. Language-agnostic workflow; per-language AST inventory tools replace the expensive read-the-codebase step (TypeScript, Python, Rust, and Flutter/Dart included, each behind a documented contract). |
 
 ## Install
 
@@ -37,7 +37,10 @@ skills/
     SKILL.md           the language-agnostic workflow
     languages/         per-language plug-ins (inventory tool + NOTES.md)
       README.md        the inventory output contract + how to add a language
-      typescript/      inventory.mjs + NOTES.md (available today)
+      typescript/      inventory.mjs + NOTES.md (TS compiler AST)
+      python/          inventory.py + NOTES.md (stdlib ast)
+      rust/            inventory.py + NOTES.md (structural scanner)
+      dart/            inventory.py + NOTES.md (structural scanner, Flutter-aware)
     templates/         example program README + conventions to bootstrap a new repo
 ```
 

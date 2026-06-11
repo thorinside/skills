@@ -9,10 +9,15 @@ lives here, one directory per language. Each language provides:
 
 | Language | Status | Inventory script | Notes |
 |---|---|---|---|
-| TypeScript / TSX | ✅ available | `typescript/inventory.mjs` | `typescript/NOTES.md` |
-| Python | planned | `python/inventory.py` (use stdlib `ast`) | — |
-| Rust | planned | `rust/inventory.rs` or `syn`-based tool | — |
-| Flutter / Dart | planned | `dart/inventory.dart` (use `package:analyzer`) | — |
+| TypeScript / TSX | ✅ available | `typescript/inventory.mjs` (TS compiler AST) | `typescript/NOTES.md` |
+| Python | ✅ available | `python/inventory.py` (stdlib `ast`) | `python/NOTES.md` |
+| Rust | ✅ available | `rust/inventory.py` (depth-0 scanner; `cargo check` is ground truth) | `rust/NOTES.md` |
+| Flutter / Dart | ✅ available | `dart/inventory.py` (depth-0 scanner; `dart analyze` is ground truth) | `dart/NOTES.md` |
+
+Each language directory includes `fixtures/` (a sample file with a known inventory
+plus `expected.md`). To re-validate after changing a script:
+`cd <lang>/fixtures && python3 ../inventory.py sample.<ext> | diff - expected.md`
+(TypeScript: run `node ../inventory.mjs` from a repo with typescript installed.)
 
 ## Inventory output contract
 

@@ -17,14 +17,16 @@ tooling, extraction procedures, recovery rules, traps) is a plug-in:
 | Language | Status | Tooling |
 |---|---|---|
 | TypeScript / TSX | available | `languages/typescript/` |
-| Python | planned | `languages/README.md` → "Adding a language" |
-| Rust | planned | 〃 |
-| Flutter / Dart | planned | 〃 |
+| Python | available | `languages/python/` |
+| Rust | available | `languages/rust/` |
+| Flutter / Dart | available | `languages/dart/` |
 
-Before planning, read `languages/<lang>/NOTES.md` for the target language. If the
-language has no plug-in yet, build the inventory tool first (contract and procedure
-in `languages/README.md`) — do not fall back to reading files manually; that
-recreates the cost this skill exists to remove.
+Before planning, read `languages/<lang>/NOTES.md` for the target language. The
+Python/Rust/Dart tools are fixture-validated (plus a CPython stdlib file for
+Python); on first production use in a new codebase, hand-check one real file
+against the inventory output. For a language with no plug-in, build the inventory
+tool first (contract and procedure in `languages/README.md`) — do not fall back to
+reading files manually; that recreates the cost this skill exists to remove.
 
 ## Step 0 — program bootstrap (first use in a repo only)
 
