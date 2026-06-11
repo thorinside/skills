@@ -1,6 +1,6 @@
 ---
 name: decision-free-specs
-description: Write decision-free refactor specs/plans that a local small model (e.g. Qwen3.6-27B) can execute mechanically. Use when asked to plan a refactor for small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools live in languages/ (TypeScript today; Python/Rust/Dart pluggable).
+description: Write decision-free refactor specs/plans that a local small model (e.g. Qwen3.6-27B) can execute mechanically. Use when asked to plan a refactor for small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools in languages/ (TypeScript, Python, Rust, Flutter/Dart).
 ---
 
 # Decision-free refactor specs
