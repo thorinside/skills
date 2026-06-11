@@ -56,3 +56,16 @@ dart analyze           # MUST be clean — this is "✓ built"
 dart run build_runner build --delete-conflicting-outputs   # only if codegen files were involved
 flutter test <co-located test>   # test imports are the compatibility surface
 ```
+
+## Leftover-declaration check (per moved symbol)
+
+After a move step, each moved symbol must have NO remaining declaration in the
+source file:
+
+```bash
+grep -nE "^(class|enum|mixin|typedef|extension)\s+<SYMBOL>\b|^(final|const|var|late)\s.*\b<SYMBOL>\s*=|^[A-Za-z_][A-Za-z0-9_<>, ?]*\s+<SYMBOL>\(" <SOURCE_FILE>
+```
+
+Empty output for every symbol = pass (`import`/`export` directives won't match).
+Plans should state the symbol count so the executor can tally the new file
+against it.

@@ -53,3 +53,15 @@ Never restructure to avoid it.
 
 A TS step is done only when the typecheck/build is clean — "it looks moved" is not
 done.
+
+## Leftover-declaration check (per moved symbol)
+
+After a move step, each moved symbol must have NO remaining declaration in the
+source file (a leftover type/const can compile fine in both places):
+
+```bash
+grep -nE "^(export )?(async )?(function|const|let|type|interface|enum|class) <SYMBOL>\b" <SOURCE_FILE>
+```
+
+Empty output for every symbol = pass. Plans should state the symbol count so the
+executor can tally the new file's exports against it.

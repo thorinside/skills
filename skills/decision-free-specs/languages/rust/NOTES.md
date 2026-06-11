@@ -53,3 +53,15 @@ cargo clippy -- -D warnings   # if the repo gates on clippy
 cargo test <module>    # co-located tests; their `use` lines are the
                        # compatibility surface
 ```
+
+## Leftover-declaration check (per moved symbol)
+
+After a move step, each moved symbol must have NO remaining declaration in the
+source file:
+
+```bash
+grep -nE "^\s*(pub(\([a-z:]+\))?\s+)?(async\s+)?(fn|struct|enum|trait|type|const|static|mod|impl)\s+<SYMBOL>\b" <SOURCE_FILE>
+```
+
+Empty output for every symbol = pass (`use` lines won't match). Plans should
+state the symbol count so the executor can tally the new module against it.

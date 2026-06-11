@@ -22,6 +22,10 @@ differs from them.
 5. **One step, one commit**, with the exact commit message the step provides, plus
    this trailer line:
    `Co-Authored-By: Qwen3.6-27B (plan: Claude Fable 5) <noreply@anthropic.com>`
+6. **Never do work from another step**, even when it looks convenient (e.g. the
+   next step moves a symbol adjacent to one you are moving now). Each step's
+   verification must run against exactly that step's changes; work smuggled into
+   the wrong commit skips its own gates.
 
 ## How to move a symbol
 
@@ -74,6 +78,18 @@ npm run lint:fix        # auto-format; should end "Found 3 warnings." or fewer m
 npm run build -w packages/ui   # MUST print "✓ built". Any TS error = step not done.
 git add -A && git status --short   # only files the step names may appear
 ```
+
+For a symbol-move step, ALSO confirm the source file kept none of the moved
+declarations. For EACH symbol in the step's table:
+
+```bash
+grep -nE "^(export )?(async )?(function|const|let|type|interface|enum|class) <SYMBOL>\b" <SOURCE_FILE>
+```
+
+Every grep MUST print nothing. Any hit means that symbol was not moved — move it
+now, even if the build already passes (a leftover type or constant can compile
+fine in both places). Count your new file's exported symbols against the step's
+stated count before committing.
 
 If the view you are editing has a co-located test file
 (`packages/ui/src/components/<View>.test.ts` — currently true for ArtifactsView),

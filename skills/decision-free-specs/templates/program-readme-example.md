@@ -56,7 +56,9 @@ Repository root: <REPO_ROOT>
 Read these two files completely before doing anything:
   specs/conventions.md
   specs/<VIEW-FOLDER>/plan.md
-Execute STEP <N> of that plan, alone. Do not start any other step.
+That plan has <M> steps. Execute STEP <N> of <M>, alone. Do not start any
+other step, and do not touch code that a different step names. Completing
+this step does NOT complete the plan unless <N> = <M>.
 When done, run the verification commands from conventions.md, then commit
 with the exact message given in the step. Report: PASS or FAILED + output.
 ```
@@ -103,3 +105,19 @@ All steps of a view committed, `npm run build -w packages/ui` prints `✓ built`
 `npm run lint` reports only the 3 pre-existing ChatView warnings, and the view file
 itself contains only: state, API calls, filtering/sorting wiring, and JSX composition
 of the extracted parts.
+
+## Completion audit (run by the planning model, not the executor)
+
+The plans' exact commit messages are the completion manifest. "All tasks done"
+is verified, never reported:
+
+```bash
+grep -A2 "Commit message" specs/*/plan.md   # expected — one commit each
+git log --format=%s <baseline>..HEAD        # actual
+```
+
+Every expected message must appear exactly once. A missing message is a skipped
+step; two steps' work under one message means the squashed step's verification
+gates never ran — re-run them by hand. Finish with one program-level pass of the
+full verification suite, including any test files near refactored code that the
+per-step gates didn't name.

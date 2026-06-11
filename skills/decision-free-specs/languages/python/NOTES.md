@@ -60,3 +60,16 @@ minimally, `python3 -c "import <package.module>"` for both old and new modules.
 If the repo has no type checker, the import smoke (`python3 -c "import …"`) for
 every touched module is the minimum gate — Python will not tell you otherwise
 until runtime.
+
+## Leftover-declaration check (per moved symbol)
+
+After a move step, each moved symbol must have NO remaining declaration in the
+source file:
+
+```bash
+grep -nE "^(def|class) <SYMBOL>\b|^<SYMBOL>\s*[:=]" <SOURCE_FILE>
+```
+
+Empty output for every symbol = pass (an `from .module import <SYMBOL>` line is
+not a declaration and won't match). Plans should state the symbol count so the
+executor can tally the new module's names against it.

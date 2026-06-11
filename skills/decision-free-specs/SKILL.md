@@ -89,6 +89,15 @@ Hard rules learned in production:
 
 - Order steps: pure moves first, unit moves second, block extraction last —
   every step independently committable, repo green between steps.
+- Title every step `STEP k of N` and state N in the plan's preamble. In the first
+  production run the executor stopped after step 1 of 3 on the hardest target and
+  reported the whole plan complete; the step header is what makes "there are more
+  steps" visible inside a fresh-context session.
+- End every move-step with a **leftover check**: the exact count of symbols moved,
+  plus a mechanical assertion that none of their declarations remain in the source
+  file (the language NOTES give the grep shape). A 27-symbol move list silently
+  lost one symbol in production; the compiler can't catch a type that still
+  compiles where it was left.
 - Anchor on **symbol names**, never line numbers (they drift).
 - Every "if X then ask/choose" in a draft plan is a bug. Replace it with either a
   decision made now, or a mechanical rule ("copy version A and report the
@@ -104,6 +113,24 @@ Hard rules learned in production:
    lists) — the script reports them, but confirm anything a plan's correctness
    hinges on.
 3. Commit per the repo's conventions.
+
+## Step 5 — audit the executor's output (do not trust "all done")
+
+The exact commit messages in the plans double as a completion manifest. When the
+executor (or its operator) reports the program finished, diff expectation against
+reality before believing it:
+
+```bash
+grep -A2 "Commit message" specs/*/plan.md   # expected messages
+git log --format=%s <baseline>..HEAD        # actual messages
+```
+
+Every expected message must appear, one commit each. Production failure modes this
+catches: steps silently skipped (the executor stopped early on the hardest target),
+and two steps squashed into one commit (the work existed but the per-step
+verification gates never ran for the squashed step — re-verify those by hand).
+Then run the full verification suite once at program level, including test files
+near refactored code that the per-step gates didn't name.
 
 ## Executor settings (defaults; the program README is authoritative per repo)
 
