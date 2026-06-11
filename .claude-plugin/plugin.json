@@ -1,0 +1,9 @@
+{
+	"name": "thorinside-skills",
+	"description": "Neal's agent skills. Currently: decision-free-specs — plan refactors so a local small model can execute them mechanically.",
+	"version": "0.1.0",
+	"author": {
+		"name": "Neal Sanche",
+		"url": "https://github.com/thorinside"
+	}
+}
