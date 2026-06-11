@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Symbol-level inventory of TS/TSX files, for writing decision-free refactor specs.
 // Usage (from the TARGET repo's root):
-//   node <path-to-skill>/scripts/inventory.mjs <file.tsx> [...]
+//   node <path-to-skill>/languages/typescript/inventory.mjs <file.tsx> [...]
 // Output: markdown to stdout.
 //
 // Replaces the expensive "agent reads the file and lists symbols" planning step:
