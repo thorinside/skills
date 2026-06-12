@@ -8,7 +8,7 @@
 		{
 			"name": "thorinside-skills",
 			"source": "./",
-			"description": "Neal's agent skills. Currently: decision-free-specs — plan refactors so a local small model can execute them mechanically."
+			"description": "Neal's agent skills. Currently: decision-free-specs — plan refactors so a local small model can execute them mechanically — and memory-gardener — tend persistent agent memory on a schedule."
 		}
 	]
 }
