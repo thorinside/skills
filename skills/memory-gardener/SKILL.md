@@ -164,6 +164,16 @@ or a plain crontab entry. Daily suits active stores; weekly suits quiet ones.
 Every run is budget-capped, so an aggressive cadence is safe — the worst case is a
 report that says "clean".
 
+## Composes with memory-collector
+
+[memory-collector](../memory-collector/SKILL.md) is the other half of the pair:
+it harvests coding-agent session transcripts (Claude Code, Codex, OpenCode,
+Cursor, Pi) and plants topics, people, events, and quotes into the same stores
+this skill tends. Collection deliberately tolerates near-duplicates and
+overgrowth — the validate gate, dedup curator, and bloat-split exist for exactly
+that inflow. The collector plants; the gardener prunes. Good rhythm: collector
+daily, gardener nightly after it.
+
 ## Provenance & credit
 
 The ceremony structure (dedup → decay → rewrite → reflect), the working
