@@ -39,7 +39,8 @@ The originals are TypeScript template strings; interpolations appear here as
   whatever model executes your run. The anti-overthinking rules are the point —
   keep them.
 
-One safety divergence from upstream: EI's ceremony applies `remove` decisions
-directly. Under this skill's contract, anything a prompt returns in `remove` goes
-to the report's **Proposed** queue instead — except in `dedup-confirmed.md`, where
-the human has already approved the merge.
+Mutation mode (SKILL.md ground rule 1): upstream EI applies `remove` decisions
+directly, and this skill's **autonomous mode** matches that behavior. In the
+default **tend-and-propose** mode, `remove` output goes to the report's
+*Proposed* queue instead, and `dedup-confirmed.md` executes entries once the
+human approves them.

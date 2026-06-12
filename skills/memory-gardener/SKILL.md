@@ -22,9 +22,15 @@ in EI by Jeremy Scherer (MIT).
 
 These override anything else in this document.
 
-1. **Never hard-delete unattended.** Deletions and uncertain merges are *proposed*
-   in the report, not executed. Where the store distinguishes invalidate / archive /
-   expire from delete, prefer those — they preserve history.
+1. **Mutation mode.** The default is **tend-and-propose**: deletions and uncertain
+   merges are *proposed* in the report, not executed. If the operator's run
+   instructions explicitly grant **autonomous mode**, clear-case deletions and
+   merges execute directly — this matches upstream EI's own ceremony, and the
+   prompts' conservatism (merge only at 85%+ core meaning; *default to keeping
+   both*) is the load-bearing safeguard. In either mode: prefer invalidate /
+   archive / expire over delete where the store distinguishes them, and anything
+   the prompts mark *uncertain* is never executed — propose it (tend-and-propose)
+   or defer it with a note (autonomous).
 2. **Budget every run.** Defaults: **25 mutations** and **50 judgment comparisons**
    per run. When the budget is spent, stop mid-phase, record the resume point in
    the report, and let the next run continue. Working oldest-or-dirtiest-first
@@ -32,9 +38,9 @@ These override anything else in this document.
 3. **Idempotent.** Re-running immediately after a clean run should find almost
    nothing to do. If a second pass keeps finding the same "problem", the fix is
    wrong — stop and propose instead.
-4. **Snapshot before the first run.** If the environment offers a backup
-   capability and there is no evidence of a prior gardening run, take a backup
-   before mutating anything.
+4. **Snapshot first.** If the environment offers a backup capability: in
+   tend-and-propose mode, back up before the first run; in autonomous mode, back
+   up before **every** run — it is the undo button for unattended pruning.
 5. **Missing capability ⇒ skip the phase and log it.** Never approximate a missing
    primitive with a destructive workaround (e.g., delete-and-recreate to fake an
    update).
@@ -64,10 +70,11 @@ garden the interval since it; on a first run, limit yourself to the most recent
 
 ## Phase 1 — dedup
 
-**First, close the loop**: if the previous report's *Proposed* entries have been
-approved by the human, execute those merges now using
-[`prompts/dedup-confirmed.md`](prompts/dedup-confirmed.md) — no re-deciding; the
-human already decided.
+**First, close the loop**: if prior reports carry outstanding *Proposed* entries
+that are cleared to run — approved by the human in tend-and-propose mode, or
+simply outstanding in autonomous mode — execute those merges now using
+[`prompts/dedup-confirmed.md`](prompts/dedup-confirmed.md), then mark those
+reports executed so they never run twice.
 
 Then, for items added or updated since the last run, find near-duplicates using
 the duplicate-check capability (or similarity search). Treat **≥ 0.90 similarity**
@@ -79,11 +86,12 @@ as candidates, and judge them with the shipped ceremony prompts:
   the gate: **default to keeping both** ("a false merge destroys information
   permanently; a false keep is harmless").
 
-Apply each prompt's `update` output; route its `remove` output to the report's
-*Proposed* queue instead of deleting (the one deliberate divergence from upstream —
-see [`prompts/README.md`](prompts/README.md)). Merge-rule cheatsheet: HIGHER for
-strength/confidence/exposure-like fields, AVERAGE for sentiment-like, union of
-unique description details.
+Apply each prompt's `update` output. Its `remove` output follows the mutation
+mode: tend-and-propose routes it to the report's *Proposed* queue; autonomous
+mode executes it (prefer archive/invalidate over hard delete) and logs each
+removal in the report (see [`prompts/README.md`](prompts/README.md)). Merge-rule
+cheatsheet: HIGHER for strength/confidence/exposure-like fields, AVERAGE for
+sentiment-like, union of unique description details.
 
 ## Phase 2 — decay
 
@@ -146,15 +154,18 @@ artifact/report capability if one exists; always also emit it as your final outp
 Stores tended: <store: capability summary, per store>
 Stats: <counts before → after, per store>
 Actions: merges N · decays N · splits N · invalidations N · reconnects N
-Proposed for human review:
-  - DELETE <id> "<short preview>" — duplicate of <id>, merged <date>
-  - MERGE? <id> + <id> — overlapping but both carry unique content
+Destructive ops (mode: tend-and-propose | autonomous):
+  - PROPOSED DELETE <id> "<short preview>" — duplicate of <id>   (tend-and-propose)
+  - EXECUTED MERGE <id> ← <id> — "<short preview>"               (autonomous)
+Deferred (uncertain): <pairs the prompts declined to merge, one line each>
 Skipped: <phase> — <missing capability>
 Budget: <used>/<max> mutations · resume point: <store / cursor or "clean">
 ```
 
-The *Proposed* section is the human review queue. That is the division of labor
-this whole skill is built on: **the gardener tends; the human prunes.**
+In tend-and-propose mode the destructive-ops section is the human review queue —
+**the gardener tends; the human prunes.** In autonomous mode the gardener prunes
+too, and the report is the audit log: every removal traceable, every uncertainty
+deferred rather than forced.
 
 ## Running periodically
 

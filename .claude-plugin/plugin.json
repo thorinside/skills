@@ -1,7 +1,7 @@
 {
 	"name": "thorinside-skills",
 	"description": "Neal's agent skills: decision-free-specs (refactor planning a local small model can execute), memory-collector (harvest coding-session transcripts into persistent memory), and memory-gardener (tend that memory on a schedule). The memory pair ships Jeremy Scherer's EI prompts (MIT).",
-	"version": "0.6.2",
+	"version": "0.7.0",
 	"author": {
 		"name": "Neal Sanche",
 		"url": "https://github.com/thorinside"
