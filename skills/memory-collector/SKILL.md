@@ -45,16 +45,19 @@ produces. Don't make the collector perfect; make the pair converge.
 
 ## Phase 0 — survey
 
-**Transcript sources.** Check which of these exist on this machine (paths are
-the tools' defaults; verify before assuming):
+**Transcript sources.** The skill bundles dependency-free Node readers
+([`readers/`](readers/README.md)) — run each with
+`node readers/<tool>.mjs --list --since <cursor high-water mark>` to discover
+what exists. **Do not parse session stores by hand**: the readers already
+encode the format traps (sidechain files, tool-result records masquerading as
+user messages, lossy cwd encodings).
 
-| Tool | Where sessions live | Format |
+| Tool | Reader | Where sessions live |
 |---|---|---|
-| Claude Code | `~/.claude/projects/<project>/*.jsonl` | JSONL records (user/assistant/meta) |
-| Codex | `~/.codex/` | SQLite + JSONL rollouts |
-| OpenCode | local app data | SQLite + JSON |
-| Cursor | `~/Library/Application Support/Cursor/User/` (macOS) | workspace state |
-| Pi | `~/.pi/agent/sessions/*.jsonl` | JSONL |
+| Claude Code | `readers/claude_code.mjs` | `~/.claude/projects/<encoded>/<uuid>.jsonl` |
+| Pi / OMP | `readers/pi.mjs` | `~/.pi/agent/sessions/` (and `~/.omp/…`) |
+| Codex | `readers/codex.mjs` | `~/.codex/state_<N>.sqlite` + rollout JSONL |
+| OpenCode, Cursor | none yet — see [`readers/README.md`](readers/README.md) to add one | local app data |
 
 **Memory stores.** Discover capabilities from the tool surface exactly as the
 gardener's Phase 0 does — memory search/mutation, knowledge graph, diary, stats.
@@ -69,18 +72,24 @@ recent few sessions**, not all of history; backfill over subsequent runs.
 ## Phase 1 — select
 
 From each available source, list sessions not in the cursor, oldest first, and
-take sessions up to the budget. Apply the live-session guard (rule 4). Derive a
-human title for each session from its working directory (`.../Projects/ei` →
-"ei") — it anchors extraction context.
+take sessions up to the budget. Apply the live-session guard (rule 4). The
+readers supply `title` (cwd-derived) and `messageCount` per session.
+
+**Prefer real conversations.** Agent automation produces sessions too — a Pi
+store can hold a thousand mechanical runner-job sessions for every human one.
+Skip sessions that are tiny (fewer than ~4 messages) or whose opening message
+is plainly a machine-generated job prompt, and record them in the cursor as
+`skipped-trivial` so they are never re-listed. Spending the budget on noise is
+how a collector starves.
 
 ## Phase 2 — convert
 
-Reduce each session to a clean speaker-labeled conversation:
+`node readers/<tool>.mjs --session <id>` returns the session already reduced
+to a clean conversation — human text and assistant text only; thinking blocks,
+tool calls/results, system noise, and sub-agent chatter are stripped by the
+reader. From that output:
 
-- Keep **human text and assistant text only**. Drop thinking blocks, tool calls,
-  tool results, system noise, and sub-agent chatter — extraction wants the
-  conversation, not the machinery.
-- Give every message a fully qualified id: `<tool>:<machine>:<session>:<msg>`
+- Build fully qualified message ids: `<tool>:<machine>:<session>:<reader msg id>`
   (e.g., `claudecode:mbp:0a1f…:42`). Quotes and provenance point at these.
 - Process the session in **windows** (~20–40 messages). For each window, the
   window itself is the "Most Recent Messages" and a compact tail of what came

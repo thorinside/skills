@@ -8,7 +8,7 @@ Agent skills, packaged both as a **Claude Code plugin** and in the standard
 | Skill | What it does |
 |---|---|
 | [`decision-free-specs`](skills/decision-free-specs/SKILL.md) | Write refactor specs/plans a local ~27B model (e.g. Qwen3.6-27B) can execute with zero architectural decisions. Language-agnostic workflow; per-language AST inventory tools replace the expensive read-the-codebase step (TypeScript, Python, Rust, and Flutter/Dart included, each behind a documented contract). |
-| [`memory-collector`](skills/memory-collector/SKILL.md) | Harvest coding-agent session transcripts already on disk (Claude Code, Codex, OpenCode, Cursor, Pi) into persistent memory: topics, people, facts, events, quotes. Cursor-tracked, budgeted, read-only on sources, secrets dropped. Ships Jeremy Scherer's extraction prompts from [Flare576/ei](https://github.com/Flare576/ei) (MIT). Pairs with `memory-gardener` — the collector plants, the gardener prunes. |
+| [`memory-collector`](skills/memory-collector/SKILL.md) | Harvest coding-agent session transcripts already on disk into persistent memory: topics, people, facts, events, quotes. Bundled dependency-free Node readers parse each tool's store (Claude Code JSONL, Pi/OMP JSONL, Codex SQLite+rollouts — ported from EI's readers, verified on live data). Cursor-tracked, budgeted, read-only on sources, secrets dropped. Ships Jeremy Scherer's extraction prompts from [Flare576/ei](https://github.com/Flare576/ei) (MIT). Pairs with `memory-gardener` — the collector plants, the gardener prunes. |
 | [`memory-gardener`](skills/memory-gardener/SKILL.md) | Periodic hygiene ceremony over whatever persistent memory the agent can reach (vector stores, knowledge graphs, diaries): dedup, decay, split bloat, invalidate superseded facts, reconnect orphans, summarize, report. Storage-agnostic — discovers capabilities from the tool surface; safe ops auto-applied, destructive ops only proposed. Ships Jeremy Scherer's battle-tested ceremony prompts (dedup curator, validate gate, confirmed merge, bloat scan/split) from [Flare576/ei](https://github.com/Flare576/ei) (MIT). |
 
 ## Install
@@ -46,6 +46,8 @@ skills/
     templates/         example program README + conventions to bootstrap a new repo
   memory-collector/
     SKILL.md           the transcript-harvest workflow (sources, cursor, windows)
+    readers/           dependency-free Node session readers + output contract
+                       (claude_code.mjs, pi.mjs, codex.mjs — ported from EI)
     prompts/           EI's extraction prompts, © Jeremy Scherer (MIT) — topics
                        scan/match/update, people, events, facts
   memory-gardener/
