@@ -64,10 +64,13 @@ gardener's Phase 0 does — memory search/mutation, knowledge graph, diary, stat
 Don't assume tool names.
 
 **The cursor.** Find the previous collection state: a memory item or artifact
-tagged `collector-cursor` holding, per source, a map of processed session ids →
-processed-at timestamps (this map is the sole source of truth — EI's
-`processed_sessions` pattern). No cursor → first run: start with the **most
-recent few sessions**, not all of history; backfill over subsequent runs.
+tagged `collector-cursor` holding, per source: a `highWater` timestamp (pass it
+as `--since` when listing) plus maps of processed and skipped-trivial session
+ids → timestamps (the maps are the sole source of truth — EI's
+`processed_sessions` pattern; `highWater` is the cheap pre-filter that keeps a
+noisy source from re-listing hundreds of already-judged sessions every run).
+No cursor → first run: start with the **most recent few sessions**, not all of
+history; backfill over subsequent runs.
 
 ## Phase 1 — select
 
@@ -132,7 +135,10 @@ and structure (entities, links) where the graph lives.
 ## Phase 5 — advance the cursor & report
 
 Update the cursor only for sessions **fully** processed — a budget-truncated
-session stays uncursored and resumes next run. Then report:
+session stays uncursored and resumes next run. Also advance each source's
+`highWater` to the newest `lastMessageAt` among sessions you *resolved*
+(processed or skipped-trivial), but never at-or-past a skipped-live session's
+timestamp — live sessions must re-list once they settle. Then report:
 
 ```
 # Collection report — <ISO timestamp>
