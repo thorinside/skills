@@ -8,7 +8,7 @@ Agent skills, packaged both as a **Claude Code plugin** and in the standard
 | Skill | What it does |
 |---|---|
 | [`decision-free-specs`](skills/decision-free-specs/SKILL.md) | Write refactor specs/plans a local ~27B model (e.g. Qwen3.6-27B) can execute with zero architectural decisions. Language-agnostic workflow; per-language AST inventory tools replace the expensive read-the-codebase step (TypeScript, Python, Rust, and Flutter/Dart included, each behind a documented contract). |
-| [`memory-gardener`](skills/memory-gardener/SKILL.md) | Periodic hygiene ceremony over whatever persistent memory the agent can reach (vector stores, knowledge graphs, diaries): dedup, decay, split bloat, invalidate superseded facts, reconnect orphans, summarize, report. Storage-agnostic — discovers capabilities from the tool surface; safe ops auto-applied, destructive ops only proposed. Ceremony adapted from [Flare576/ei](https://github.com/Flare576/ei) (MIT). |
+| [`memory-gardener`](skills/memory-gardener/SKILL.md) | Periodic hygiene ceremony over whatever persistent memory the agent can reach (vector stores, knowledge graphs, diaries): dedup, decay, split bloat, invalidate superseded facts, reconnect orphans, summarize, report. Storage-agnostic — discovers capabilities from the tool surface; safe ops auto-applied, destructive ops only proposed. Ships Jeremy Scherer's battle-tested ceremony prompts (dedup curator, validate gate, confirmed merge, bloat scan/split) from [Flare576/ei](https://github.com/Flare576/ei) (MIT). |
 
 ## Install
 
@@ -45,6 +45,8 @@ skills/
     templates/         example program README + conventions to bootstrap a new repo
   memory-gardener/
     SKILL.md           the storage-agnostic memory hygiene ceremony
+    prompts/           EI's ceremony prompts, © Jeremy Scherer (MIT) — dedup
+                       curator/gate/confirmed-merge, bloat scan/split
 ```
 
 ## License

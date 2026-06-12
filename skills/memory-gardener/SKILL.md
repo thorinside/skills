@@ -13,7 +13,10 @@ hygiene (duplicate checks, invalidation, re-linking) but nothing *runs* them.
 This skill is the gardener: a budgeted, idempotent ceremony you run periodically
 over whatever memory stores the current environment exposes. It is deliberately
 **storage-agnostic** — you discover capabilities from the tool surface at the start
-of every run, tend what exists, skip what doesn't, and report everything.
+of every run, tend what exists, skip what doesn't, and report everything. The
+judgment prompts for the risky calls — dedup and bloat-splitting — ship in
+[`prompts/`](prompts/README.md), carried from the battle-tested nightly ceremony
+in EI by Jeremy Scherer (MIT).
 
 ## Ground rules — the safety contract
 
@@ -61,17 +64,26 @@ garden the interval since it; on a first run, limit yourself to the most recent
 
 ## Phase 1 — dedup
 
-For items added or updated since the last run, find near-duplicates using the
-duplicate-check capability (or similarity search). A hit at **≥ 0.85 similarity**
-is a candidate pair.
+**First, close the loop**: if the previous report's *Proposed* entries have been
+approved by the human, execute those merges now using
+[`prompts/dedup-confirmed.md`](prompts/dedup-confirmed.md) — no re-deciding; the
+human already decided.
 
-- **Auto-merge only the plain cases**: same fact, one version strictly richer.
-  Keep the richer text, union tags/sources/links onto the survivor, then **propose**
-  the loser's deletion in the report — do not delete it.
-- Both versions contribute unique content → merge the texts carefully into the
-  survivor, same proposal for the loser.
-- Any doubt at all → no mutation; list the pair under *Proposed* with one line of
-  reasoning.
+Then, for items added or updated since the last run, find near-duplicates using
+the duplicate-check capability (or similarity search). Treat **≥ 0.90 similarity**
+as candidates, and judge them with the shipped ceremony prompts:
+
+- A cluster of 2+ candidates → [`prompts/dedup-cluster.md`](prompts/dedup-cluster.md) —
+  the curator: merges at 85%+ core-meaning overlap, prime directive **lose NO data**.
+- Exactly two records, newcomer vs established → [`prompts/dedup-validate.md`](prompts/dedup-validate.md) —
+  the gate: **default to keeping both** ("a false merge destroys information
+  permanently; a false keep is harmless").
+
+Apply each prompt's `update` output; route its `remove` output to the report's
+*Proposed* queue instead of deleting (the one deliberate divergence from upstream —
+see [`prompts/README.md`](prompts/README.md)). Merge-rule cheatsheet: HIGHER for
+strength/confidence/exposure-like fields, AVERAGE for sentiment-like, union of
+unique description details.
 
 ## Phase 2 — decay
 
@@ -90,6 +102,14 @@ one id. Worst offenders first, **max 5 splits per run**:
 2. Link children to the parent using whatever the store has — edges, tunnels,
    tags, or a `parent:` reference in metadata.
 3. Rewrite the parent down to its actual core.
+
+Run it as EI does, in two steps with the shipped prompts:
+[`prompts/bloat-scan.md`](prompts/bloat-scan.md) extracts the buried subjects as
+search phrases (the scan mutates nothing; person-like records get the coffee-shop
+test — *would this detail still matter at a chance meeting in six months?*);
+search your store for each phrase; then
+[`prompts/bloat-split.md`](prompts/bloat-split.md) slims the original and
+redistributes the content into matching or new records.
 
 This is the most expensive phase; it is always acceptable to do fewer, better
 splits.
@@ -144,9 +164,14 @@ or a plain crontab entry. Daily suits active stores; weekly suits quiet ones.
 Every run is budget-capped, so an aggressive cadence is safe — the worst case is a
 report that says "clean".
 
-## Provenance
+## Provenance & credit
 
-The ceremony structure (dedup → decay → rewrite → reflect) and the working
-thresholds (0.85 duplicate similarity, ~750-character bloat line) are adapted from
-the nightly ceremony in [Flare576/ei](https://github.com/Flare576/ei) (MIT,
-© Jeremy Scherer), generalized here to be storage-agnostic.
+The ceremony structure (dedup → decay → rewrite → reflect), the working
+thresholds (0.90 duplicate candidates, 85%+ core-meaning merges, ~750-character
+bloat line), and the judgment prompts in [`prompts/`](prompts/README.md) come from
+the nightly ceremony in [Flare576/ei](https://github.com/Flare576/ei) by
+**Jeremy Scherer** (MIT, © 2026 Jeremy Scherer). Jeremy wrote and tuned those
+prompts against real personal memory; this skill only generalizes the plumbing
+around them to be storage-agnostic. If the gardener earns its keep, the upstream
+project — a local-first AI memory layer with a persona companion system on top —
+deserves a look.
