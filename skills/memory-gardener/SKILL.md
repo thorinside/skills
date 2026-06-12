@@ -1,6 +1,6 @@
 ---
 name: memory-gardener
-description: Run a periodic hygiene ceremony over whatever persistent memory the agent can reach — vector memory stores, knowledge graphs, diaries. Dedup near-duplicates, decay stale items, split bloated ones, invalidate superseded facts, reconnect orphans, write an interval summary, and report. Use when asked to garden/tend/clean agent memory, run memory hygiene, or as a scheduled unattended task. Storage-agnostic: discovers capabilities from the tool surface, never assumes specific tool names.
+description: Run a periodic hygiene ceremony over whatever persistent memory the agent can reach — vector memory stores, knowledge graphs, diaries. Dedup near-duplicates, decay stale items, split bloated ones, invalidate superseded facts, reconnect orphans, write an interval summary, and report. Use when asked to garden/tend/clean agent memory, run memory hygiene, or as a scheduled unattended task. Storage-agnostic — discovers capabilities from the tool surface, never assumes specific tool names.
 ---
 
 # Memory gardener
