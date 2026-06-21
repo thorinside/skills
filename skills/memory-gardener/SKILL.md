@@ -55,7 +55,7 @@ them to capabilities:
 | Memory search | search or list stored memories by similarity, text, or tag |
 | Memory mutation | create / update memories (delete may exist; you won't call it) |
 | Duplicate check | given text, return near-duplicates — or emulate via similarity search with scores |
-| Knowledge graph | add / query facts; invalidate; timeline or history views |
+| Knowledge graph | add / query facts; retire/invalidate links or facts; timeline or history views |
 | Graph structure | list containers (collections, rooms, drawers), links/edges, traverse, reconnect |
 | Diary / journal | append a dated free-text entry |
 | Stats | item counts, graph stats — take these before and after |
@@ -67,6 +67,15 @@ vector store *and* a structured knowledge graph; tend both. Take baseline stats.
 Establish "since when": look for the previous gardening report or diary entry and
 garden the interval since it; on a first run, limit yourself to the most recent
 ~200 items rather than all of history.
+
+When the environment exposes mapped tool discovery, discover and inspect the
+actual mutation surface before deciding a capability is missing. Search for the
+intent ("invalidate knowledge relationship", "delete knowledge link",
+"archive memory", etc.), inspect the returned schema, and call the mapped tool
+directly. Do not require a tool to be literally named `invalidate`; many systems
+expose graph invalidation as a provider-neutral delete/retire operation on a link
+resource. Treat backing-provider tool names as implementation details unless the
+environment explicitly exposes only those raw tools.
 
 ## Phase 1 — dedup
 
@@ -127,8 +136,26 @@ splits.
 Knowledge-graph stores only. Query facts touched since the last run and look for
 contradictions: same subject and predicate, different object, different times. The
 older fact is superseded — **invalidate** it (which preserves the timeline), never
-delete it. If the store has no invalidation, add the correction as a new fact and
-list the stale one under *Proposed*.
+hard-delete it.
+
+Stay storage-agnostic, but be precise about the operation class:
+
+1. Prefer a native invalidate/archive/retire operation when the inspected schema
+   offers one.
+2. If the schema models invalidation as deleting a link or fact resource, that is
+   still the correct invalidation capability. Use it when the tool description or
+   provider behavior says it retires the graph assertion rather than destroying
+   all history.
+3. If the stale assertion is identified as subject + predicate + object but the
+   mutation schema requires an opaque link/fact ID, first use the graph query,
+   neighbor, path, timeline, or search capabilities to recover the exact ID. Do
+   not claim invalidation is unavailable just because you started from the triple.
+4. In tend-and-propose mode, propose the invalidation unless the operator has
+   already approved that stale assertion. In autonomous mode, execute only
+   clear-cut supersession and log the exact retired assertion.
+
+If the store truly has no invalidation, add the correction as a new fact and list
+the stale one under *Proposed*.
 
 ## Phase 5 — reconnect orphans
 
