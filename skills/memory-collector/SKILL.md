@@ -150,6 +150,31 @@ Cursor: advanced to <session id / timestamp> per source
 Handoff: <n> new items awaiting the gardener's validate gate
 ```
 
+### Substrate semantic completion
+
+When this skill runs as a Substrate runner or workflow job, keep the collection
+report as the human-readable output, then make the final non-empty assistant line
+exactly one `SUBSTRATE_OUTCOME_V1=` declaration. Lifecycle completion is not the
+success signal.
+
+Declare `outcome: "succeeded"` only when every counted session was fully
+processed or honestly skipped, the cursor advanced only across resolved
+sessions, planted items retain provenance, and the report and cursor were
+persisted and read back through the available store. A partial uncursored
+session is allowed only when it is reported as the resume point; lost
+provenance, cursor advancement past unresolved work, secret persistence, or
+failure to persist the required report is `outcome: "failed"`. Memory-store
+writes are not Git changes, so use `changes.status: "notApplicable"`.
+
+Example success line (replace placeholders with real evidence):
+
+```text
+SUBSTRATE_OUTCOME_V1={"version":1,"outcome":"succeeded","summary":"Collected <n> sessions and persisted report <artifact-id>","evidence":{"changes":{"status":"notApplicable","reason":"Memory-store mutations are not Git changes"},"verification":{"status":"passed","commands":["read back collector cursor","read back report artifact <artifact-id>"]}}}
+```
+
+Emit no second declaration and nothing after it. Outside a Substrate job, do not
+add this platform-specific line.
+
 ## Running periodically
 
 Same hosting story as the gardener: any scheduler that can invoke an agent with

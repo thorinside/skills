@@ -132,6 +132,27 @@ verification gates never ran for the squashed step — re-verify those by hand).
 Then run the full verification suite once at program level, including test files
 near refactored code that the per-step gates didn't name.
 
+## Substrate semantic completion
+
+When this skill runs as a Substrate runner or workflow job, any skill- or
+workflow-specific status block comes first. The final non-empty assistant line
+must be exactly one `SUBSTRATE_OUTCOME_V1=` declaration.
+
+Use `outcome: "succeeded"` only when the requested spec/plan is decision-free,
+the expected files exist, all required edits are committed (or the current tree
+was already proven to satisfy the request), and the stated verification passed.
+Use `outcome: "failed"` for failed, blocked, or needs-human work. Report honest
+Git evidence with `changes.status: "committed"` plus commit IDs, or
+`"alreadySatisfied"`; report the commands that actually passed. Never infer
+semantic success from a normal process exit.
+
+```text
+SUBSTRATE_OUTCOME_V1={"version":1,"outcome":"succeeded","summary":"Authored and verified the decision-free spec program","evidence":{"changes":{"status":"committed","commitIds":["<commit>"]},"verification":{"status":"passed","commands":["<verification command>"]}}}
+```
+
+Emit no second declaration and nothing after it. Outside a Substrate job, do not
+add this platform-specific line.
+
 ## Executor settings (defaults; the program README is authoritative per repo)
 
 Target class: local ~27B instruct model (Qwen3.6-27B preferred for agentic-coding

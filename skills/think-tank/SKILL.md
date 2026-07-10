@@ -48,6 +48,15 @@ A Think Tank session produces complete project documentation sufficient to begin
 
 End by presenting: what was decided, what was deferred and why, where the ADRs are, where the glossary is, where evidence lives, and the current spec status.
 
+When the session itself runs as a Substrate runner or workflow job, append one
+semantic declaration after that human closeout. The final non-empty assistant
+line must be exactly `SUBSTRATE_OUTCOME_V1=<json>`. Declare success only when the
+promised Case File/spec outputs were persisted and verified; failed, blocked, or
+needs-human execution declares `outcome: "failed"`. Use honest committed,
+already-satisfied, or not-applicable change evidence and list only verification
+that actually passed. Emit no second declaration and nothing after it. Outside a
+Substrate job, omit the platform-specific line.
+
 ## 3. Session Setup
 
 1. Ask the user what they want to design, harden, or stress-test.
@@ -109,9 +118,15 @@ Before dispatching, always search first with the artifact-search and knowledge-s
    - `maxAttempts`: `1`.
    - `allowUnregisteredCwd`: `true` when `cwd` is not a registered checkout.
 4. Wait for completion with the job-completion/result tool discovered in Step 0 using a positive `wait` value. Block on the result for v1; do not dispatch another specialist in parallel.
-5. Read the specialist result artifact. If the job reports an artifact ID, use the artifact-reading tool discovered in Step 0; otherwise inspect the job output and locate the referenced artifact.
-6. Store or link the result as Case File evidence with tags such as `think-tank:<slug>:evidence`.
-7. Summarize findings to the user and ask what they decide.
+5. Inspect the job's effective semantic outcome. Lifecycle `status: complete`
+   only means the process returned normally. Treat the specialist as successful
+   only when the returned effective `outcome` (workflow rollup when present,
+   otherwise the local semantic outcome) is `succeeded`. A `failed` or `unknown`
+   outcome is not accepted evidence; report the failure/uncertainty and recover,
+   revise, or ask the user before continuing.
+6. Read the specialist result artifact only after semantic success. If the job reports an artifact ID, use the artifact-reading tool discovered in Step 0; otherwise inspect the job output and locate the referenced artifact.
+7. Store or link the result as Case File evidence with tags such as `think-tank:<slug>:evidence`.
+8. Summarize findings to the user and ask what they decide.
 
 ### Specialist Personas as Dispatch Prompts
 

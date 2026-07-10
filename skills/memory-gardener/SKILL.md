@@ -194,6 +194,30 @@ In tend-and-propose mode the destructive-ops section is the human review queue â
 too, and the report is the audit log: every removal traceable, every uncertainty
 deferred rather than forced.
 
+### Substrate semantic completion
+
+When this skill runs as a Substrate runner or workflow job, the gardening report
+remains the human-readable output, but it is not the machine success signal.
+After the report and any workflow-specific status fields, make the final
+non-empty assistant line exactly one `SUBSTRATE_OUTCOME_V1=` declaration.
+
+Declare `outcome: "succeeded"` only when the ceremony completed within its
+budget, every unavailable phase was honestly recorded as skipped, every executed
+mutation was audited, and the report was persisted and read back when an artifact
+capability exists. A required backup failure in autonomous mode, an unreported
+partial mutation, or failure to persist the required report is `outcome:
+"failed"`; blocked or needs-human work is also failed. Memory and knowledge
+mutations are not Git changes, so use `changes.status: "notApplicable"`.
+
+Example success line (replace placeholders with real evidence):
+
+```text
+SUBSTRATE_OUTCOME_V1={"version":1,"outcome":"succeeded","summary":"Completed memory gardening and persisted report <artifact-id>","evidence":{"changes":{"status":"notApplicable","reason":"Memory-store mutations are not Git changes"},"verification":{"status":"passed","commands":["read back report artifact <artifact-id>"]}}}
+```
+
+Emit no second declaration and nothing after it. Outside a Substrate job, do not
+add this platform-specific line.
+
 ## Running periodically
 
 Designed for daily-ish unattended runs by any host that can invoke an agent with
