@@ -1,6 +1,6 @@
 ---
 name: decision-free-specs
-description: Write decision-free refactor specs/plans that a local small model (e.g. Qwen3.6-27B) can execute mechanically. Use when asked to plan a refactor for small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools in languages/ (TypeScript, Python, Rust, Flutter/Dart).
+description: Write decision-free refactor specs/plans that a local small model (e.g. Qwen3.6-27B) can execute mechanically. Use when asked to plan a refactor for small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools in languages/ (TypeScript, Python, Rust, Flutter/Dart, Go).
 ---
 
 # Decision-free refactor specs
@@ -20,11 +20,13 @@ tooling, extraction procedures, recovery rules, traps) is a plug-in:
 | Python | available | `languages/python/` |
 | Rust | available | `languages/rust/` |
 | Flutter / Dart | available | `languages/dart/` |
+| Go | available | `languages/go/` |
 
 Before planning, read `languages/<lang>/NOTES.md` for the target language. The
 Python/Rust/Dart tools are fixture-validated (plus a CPython stdlib file for
-Python); on first production use in a new codebase, hand-check one real file
-against the inventory output. For a language with no plug-in, build the inventory
+Python). The Go stdlib-AST tool is CLI/golden validated and checked against real
+Go compiler sources. On first production use in a new codebase, hand-check one
+real file against the inventory output. For a language with no plug-in, build the inventory
 tool first (contract and procedure in `languages/README.md`) — do not fall back to
 reading files manually; that recreates the cost this skill exists to remove.
 

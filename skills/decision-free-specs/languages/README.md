@@ -13,11 +13,15 @@ lives here, one directory per language. Each language provides:
 | Python | ✅ available | `python/inventory.py` (stdlib `ast`) | `python/NOTES.md` |
 | Rust | ✅ available | `rust/inventory.py` (depth-0 scanner; `cargo check` is ground truth) | `rust/NOTES.md` |
 | Flutter / Dart | ✅ available | `dart/inventory.py` (depth-0 scanner; `dart analyze` is ground truth) | `dart/NOTES.md` |
+| Go | ✅ available | `go/inventory.go` (stdlib AST; Go 1.24+) | `go/NOTES.md` |
 
 Each language directory includes `fixtures/` (a sample file with a known inventory
 plus `expected.md`). To re-validate after changing a script:
 `cd <lang>/fixtures && python3 ../inventory.py sample.<ext> | diff - expected.md`
 (TypeScript: run `node ../inventory.mjs` from a repo with typescript installed.)
+For Go, run the exact CLI test command from `languages/go/`:
+`go test inventory.go inventory_test.go`. Re-validate its golden fixture with
+`cd fixtures && go run ../inventory.go -- sample.go | diff -u expected.md -`.
 
 ## Inventory output contract
 
