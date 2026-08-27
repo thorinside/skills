@@ -19,9 +19,7 @@ differs from them.
    same API calls. If a change feels like an improvement, it is out of scope.
 4. **Indentation is tabs**, matching the existing files. `npm run lint:fix` will
    normalize formatting — run it before verifying.
-5. **One step, one commit**, with the exact commit message the step provides, plus
-   this trailer line:
-   `Co-Authored-By: Qwen3.6-27B (plan: Claude Fable 5) <noreply@anthropic.com>`
+5. **One step, one commit**, with the exact commit message the step provides.
 6. **Never do work from another step**, even when it looks convenient (e.g. the
    next step moves a symbol adjacent to one you are moving now). Each step's
    verification must run against exactly that step's changes; work smuggled into
@@ -108,8 +106,8 @@ something you shouldn't have.
 - First failure: read the compiler error, apply the recovery rule above or fix the
   missing import. Re-verify.
 - Second failure on the same step: run `git checkout -- packages/ui/src` (this resets
-  all source edits), report `FAILED` with the full error text, and stop. A human (or
-  a larger model) will adjust the plan. Never improvise around a failing step.
+  all source edits), report `FAILED` with the full error text, and stop. The spec
+  author will adjust the plan. Never improvise around a failing step.
 
 ## What "exported" means in symbol tables
 

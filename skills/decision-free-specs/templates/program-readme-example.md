@@ -12,32 +12,28 @@
 Decision-free refactor specs for the remaining UI views, modeled on the completed
 ServicesView refactor (commit `b830740`, see `packages/ui/src/components/services/`).
 Each view folder contains a `spec.md` (target architecture — already decided) and a
-`plan.md` (ordered mechanical steps). The executing model makes **zero architectural
-decisions**: every file path, symbol move, prop interface, and commit message is
-specified. Where something unexpected appears, the plans give a mechanical recovery
-rule instead of asking for judgment.
+`plan.md` (ordered mechanical steps). The executing model makes no avoidable
+architectural or implementation decisions: every file path, symbol move, prop
+interface, sequencing constraint, recovery rule, verification command, and commit
+message is specified.
 
-## Target model: Qwen3.6-27B
+## Executor contract
 
-Chosen over Gemma 4 31B. Rationale, from the model documentation:
+The executor model is not part of the program design. Use any coding model suitable
+for the target language, repository tools, and one step's working set. Model
+identity, parameter count, context window, and vendor-specific strengths are
+deliberately unspecified.
 
-- Qwen3.6's headline capability is **agentic coding** — repository-level editing with
-  bash + file-edit tools is what the series is optimized and evaluated for (SWE-bench
-  with an agent scaffold). This program is exactly that workload.
-- 262K native context — far more than any step here needs (each step's working set is
-  kept under ~16K tokens by design; do not feed the whole repo).
-- Gemma 4 31B is a strong generalist (256K context, native system role, optional
-  `<|think|>` reasoning) but its documentation emphasizes general reasoning and vision;
-  Qwen's emphasizes precisely this task shape.
-- Note: there is no open-weight "Qwen3.6 28B"; the dense model in that class is
-  **Qwen3.6-27B**. Use the instruct variant.
+The program's portability comes from decision completeness. Resolve as many choices
+as possible before execution so that even a suitable small coding model can complete
+each step without inventing architecture, interfaces, or recovery behavior.
 
-### Runtime settings (llama.cpp)
+### Runtime settings
 
-- Temperature **0.2**, top_p 0.9 for these steps. (Qwen's own agentic evals use
-  1.0/0.95, but every step here is mechanical code movement — determinism beats
-  creativity. If the model stalls or loops, raise temperature to 0.6, never above.)
-- Context: 32K is sufficient per step. Do not paste files the step doesn't name.
+- Prefer deterministic sampling for mechanical edits. If the runtime exposes these
+  controls, temperature **0.2** and top_p **0.9** are reasonable starting defaults.
+- Give the executor enough context for the current step. Do not paste files the step
+  does not name.
 - One step per conversation. Start each step with a fresh context.
 
 ### Prompt template (per step)
@@ -106,7 +102,7 @@ All steps of a view committed, `npm run build -w packages/ui` prints `✓ built`
 itself contains only: state, API calls, filtering/sorting wiring, and JSX composition
 of the extracted parts.
 
-## Completion audit (run by the planning model, not the executor)
+## Completion audit (run by the spec author, not the executor)
 
 The plans' exact commit messages are the completion manifest. "All tasks done"
 is verified, never reported:

@@ -1,15 +1,18 @@
 ---
 name: decision-free-specs
-description: Write decision-free refactor specs/plans that a local small model (e.g. Qwen3.6-27B) can execute mechanically. Use when asked to plan a refactor for small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools in languages/ (TypeScript, Python, Rust, Flutter/Dart, Go).
+description: Write decision-free refactor specs/plans that resolve architectural and implementation choices up front so a suitable coding model can execute mechanically. Use when asked to plan a refactor for delegated or small-model execution, "make specs for X", or to set up/extend a specs/ program in a repo. Language-agnostic core; per-language inventory tools in languages/ (TypeScript, Python, Rust, Flutter/Dart, Go).
 ---
 
 # Decision-free refactor specs
 
-Produce `specs/<target>/spec.md` + `plan.md` pairs that a ~27B local model executes
-with **zero architectural decisions**. The expensive part of planning — knowing
-exactly what is in each file — is a script, not a reading job. The planning model
-(you) spends tokens only on judgment: pattern choice, interface tables,
-trap-spotting.
+Produce `specs/<target>/spec.md` + `plan.md` pairs that make implementation
+mechanical for the receiving coding model. The receiver's identity, family, and
+parameter count are not part of the contract. Resolve as many decisions as
+possible up front — architecture, interfaces, file placement, sequencing,
+recovery, and verification — so even suitable small coding models can implement
+the work reliably. The expensive part of planning — knowing exactly what is in
+each file — is a script, not a reading job. The spec author spends effort only on
+judgment: pattern choice, interface tables, and trap-spotting.
 
 The workflow below is language-agnostic. Everything language-specific (inventory
 tooling, extraction procedures, recovery rules, traps) is a plug-in:
@@ -155,9 +158,13 @@ SUBSTRATE_OUTCOME_V1={"version":1,"outcome":"succeeded","summary":"Authored and 
 Emit no second declaration and nothing after it. Outside a Substrate job, do not
 add this platform-specific line.
 
-## Executor settings (defaults; the program README is authoritative per repo)
+## Executor contract (defaults; the program README is authoritative per repo)
 
-Target class: local ~27B instruct model (Qwen3.6-27B preferred for agentic-coding
-strength). Temperature 0.2, top_p 0.9 — mechanical edits want determinism. One step
-per fresh-context session. Two failures on a step → reset the working tree, report
-FAILED with the error, stop. Never improvise around a failing step.
+Model identity and size are deliberately unspecified. Use any coding model suitable
+for the target language, repository tools, and one step's working set. The spec and
+plan must not depend on a particular model's branding, parameter count, context
+window, or advertised strengths. If sampling controls are available, prefer
+deterministic settings; temperature 0.2 and top_p 0.9 are reasonable starting
+defaults. Use one fresh-context session per step. Two failures on a step → reset the
+working tree, report FAILED with the error, stop. Never improvise around a failing
+step.
