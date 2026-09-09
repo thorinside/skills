@@ -8,7 +8,7 @@ import * as pi from "../pi.mjs";
 import * as codex from "../codex.mjs";
 import { conversationMetadata } from "../common.mjs";
 import { selectSessions, checkpointWindow, completeSession, pendingMessages, resolution,
-  windowKey, plantOnce } from "../collector-state.mjs";
+  windowKey, plantOnce, beginWindow, reconcileWindow, skipTrivial } from "../collector-state.mjs";
 
 test("workflow envelope is pre-budget automation, substantive human follow-up defeats it", () => {
   const user = { id: "one", role: "user", timestamp: at("10:00"),
@@ -119,9 +119,12 @@ test("A to B to A restoration is new work, while retry operation keys stay stabl
     assert.ok(pending.some((m) => m.id === original.messages[0].id));
     const key = windowKey("test", s, [pending[0]], cursor);
     keys.push(key);
-    const receipt = await plantOnce(store, key, { content: pending[0].content });
-    await plantOnce(store, key, { content: pending[0].content }); // retry, not another update
-    cursor = checkpointWindow(cursor, s, s, pending, [receipt], NOW);
+    cursor = beginWindow(cursor, s, s, pending, key, `plan-${key}`, NOW);
+    const context = { cursor, session: s, planKey: key };
+    const receipt = await plantOnce(store, key, { content: pending[0].content }, context);
+    await plantOnce(store, key, { content: pending[0].content }, context); // retry, not another update
+    cursor = reconcileWindow(cursor, s, key, [receipt]);
+    cursor = checkpointWindow(cursor, s, s, pending, [], NOW);
     assert.equal(windowKey("test", s, [pending[0]], cursor), key);
     cursor = completeSession(cursor, s, s, { eventsComplete: true, now: NOW });
     assert.equal(storedContent, s.messages[0].content);
@@ -130,4 +133,38 @@ test("A to B to A restoration is new work, while retry operation keys stay stabl
   assert.equal(new Set(keys).size, 3);
   assert.equal(cursor.collectorV2.sources.pi.sessions.newest.messageKeys.length, 4);
   assert.equal(pendingMessages(cursor, original).length, 0);
+});
+
+test("lost B write followed by source restoration to acknowledged A cannot hide the pending correction", async (t) => {
+  const f = await fixture(); t.after(() => f.close());
+  const a = await pi.session([f.roots.pi], "newest");
+  const b = { ...a, revision: "B", messages: a.messages.map((m, i) => i ? m : { ...m, content: "B" }) };
+  const originalKey = windowKey("test", a, [a.messages[0]], {});
+  let cursor = completeSession(checkpointWindow({}, a, a, a.messages, [], NOW), a, a, { eventsComplete: true, now: NOW });
+  const bKey = windowKey("test", b, [b.messages[0]], cursor);
+  cursor = beginWindow(cursor, b, b, [b.messages[0]], bKey, "persisted-plan-B", NOW);
+  const writes = new Map(); let stored = "A", count = 0;
+  const store = { find: async (key) => writes.get(key),
+    write: async (key, record) => { stored = record.content; count++; writes.set(key, "matched-item");
+      if (key === bKey) throw Error("reply lost"); return "matched-item"; },
+    verify: async (id, key) => assert.equal(writes.get(key), id) };
+  await assert.rejects(plantOnce(store, bKey, { content: "B" }, { cursor, session: b, planKey: bKey }), /reply lost/);
+  assert.equal(stored, "B");
+  // Source has reverted to A, but B's intent was durably saved before its write.
+  assert.equal(resolution(cursor, a), "resume");
+  assert.equal(pendingMessages(cursor, a).length, 1);
+  assert.throws(() => completeSession(cursor, a, a, { eventsComplete: true, now: NOW }), /not fully/);
+  assert.throws(() => skipTrivial(cursor, a, a, "hypothetical", NOW), /pending writes/);
+  const found = await store.find(bKey); await store.verify(found, bKey);
+  cursor = reconcileWindow(cursor, a, bKey, [found]); // no replay of superseded B
+  const aKey = windowKey("test", a, [a.messages[0]], cursor);
+  assert.notEqual(aKey, originalKey);
+  cursor = beginWindow(cursor, a, a, [a.messages[0]], aKey, "persisted-plan-restored-A", NOW);
+  const receipt = await plantOnce(store, aKey, { content: "A" }, { cursor, session: a, planKey: aKey });
+  cursor = reconcileWindow(cursor, a, aKey, [receipt]);
+  cursor = checkpointWindow(cursor, a, a, [a.messages[0]], [], NOW);
+  cursor = completeSession(cursor, a, a, { eventsComplete: true, now: NOW });
+  assert.equal(stored, "A"); assert.equal(count, 2);
+  assert.equal(resolution(cursor, a), "completed");
+  assert.equal(cursor.collectorV2.sources.pi.sessions.newest.reconciledPlans.length, 2);
 });

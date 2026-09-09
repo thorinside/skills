@@ -171,11 +171,20 @@ and structure (entities, links) where the graph lives.
 **Retry safety is distinct from semantic deduplication.** Before any window's
 writes, persist/read back its sanitized extraction plan, stable
 `windowKey(host, session, messages, cursor)` and per-store operation keys/targets in a
-pending artifact beside the cursor. Reuse that plan on retry. Tag each operation
-with its key and reconcile it via exact search/readback before creating again;
+pending artifact beside the cursor. Then call `beginWindow` with that plan ID
+and persist/read back its cursor intent **before any store write**. This
+invalidates affected old message acknowledgements and records the new revision
+generation, even if the source later reverts before a write reply/checkpoint.
+An external plan alone is insufficient: selection must see the pending intent.
+Reuse that plan on retry. Tag each operation with its key and reconcile it via
+exact search/readback before creating again;
 `plantOnce` documents the required store-adapter contract. A write timeout is
-not proof that nothing was written. If a store cannot reconcile an uncertain
-write, leave it pending and report failure rather than blindly retrying.
+not proof that nothing was written. Use `reconcileWindow` only after every
+planned operation's result/absence has been verified; it retains receipts and
+plan provenance but does not acknowledge messages. Never replay a superseded
+plan after a source change; reconcile its old writes, then analyze current
+pending messages. If a store cannot reconcile an uncertain write, leave it
+pending and report failure rather than blindly retrying.
 Checkpoint a window only after **all** its pipelines and required store writes
 (including empty results) are verified; retain receipt IDs and fingerprints.
 Track the **current** acknowledged fingerprint per message identity, separately

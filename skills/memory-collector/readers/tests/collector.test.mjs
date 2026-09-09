@@ -10,7 +10,7 @@ import * as pi from "../pi.mjs";
 import * as codex from "../codex.mjs";
 import { messageKey, newestFirst } from "../common.mjs";
 import { selectSessions, checkpointWindow, completeSession, skipTrivial, pendingMessages,
-  windowKey, plantOnce, resolution } from "../collector-state.mjs";
+  windowKey, plantOnce, resolution, beginWindow, reconcileWindow } from "../collector-state.mjs";
 
 const readers = fileURLToPath(new URL("../", import.meta.url));
 const scripts = { claudecode: "claude_code", pi: "pi", codex: "codex" };
@@ -110,10 +110,14 @@ test("partial failure stays unresolved; only acknowledged windows resume; no dup
       if (loseReply) { loseReply = false; throw Error("lost response after write"); } return "receipt-1"; },
     verify: async (id, key) => assert.equal(store.get(key)?.id, id) };
   const window = s.messages.slice(0, 2), key = windowKey("test", s, window, {});
-  await assert.rejects(plantOnce(adapter, key, { source: "pi:test:newest" }), /lost response/);
-  const receipt = await plantOnce(adapter, key, { source: "pi:test:newest" });
+  await assert.rejects(plantOnce(adapter, key, {}), /beginWindow/);
+  const intent = beginWindow({}, s, s, window, key, "persisted-plan", NOW);
+  const context = { cursor: intent, session: s, planKey: key };
+  await assert.rejects(plantOnce(adapter, key, { source: "pi:test:newest" }, context), /lost response/);
+  const receipt = await plantOnce(adapter, key, { source: "pi:test:newest" }, context);
   assert.equal(writes, 1);
-  const partial = checkpointWindow({}, s, s, window, [receipt], NOW);
+  const reconciled = reconcileWindow(intent, s, key, [receipt]);
+  const partial = checkpointWindow(reconciled, s, s, window, [], NOW);
   assert.equal(resolution(partial, s), "resume");
   assert.deepEqual(pendingMessages(partial, s), s.messages.slice(2));
   assert.throws(() => completeSession(partial, s, s, { eventsComplete: true, now: NOW }), /not fully/);

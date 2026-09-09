@@ -24,6 +24,7 @@ export function legacyRecord(cursor, s) {
 export function resolution(cursor, s) {
   const current = state(cursor, s);
   if (current) {
+    if (Object.keys(current.pendingWindows ?? {}).length) return "resume";
     if (current.revision === s.revision && ["processed", "skipped-trivial"].includes(current.status)) return "completed";
     return current.status === "partial" ? "resume" : "changed";
   }
@@ -125,6 +126,38 @@ export function windowKey(host, s, messages, cursor, pipeline = "window") {
   return hash([host, s.tool, s.id, generation(cursor, s), pipeline, messages.map(messageKey)]);
 }
 
+// Persist/read back this intent BEFORE any store write. Invalidating affected
+// acknowledgements prevents an uncertain B write from hiding behind an old A
+// acknowledgement when a source reverts to A before B can be checkpointed.
+export function beginWindow(cursor, before, after, messages, key, planArtifactId, now = Date.now()) {
+  assertStable(before, after, now);
+  if (!key || !planArtifactId || !messages.length) throw Error("window key, persisted plan, and messages required");
+  const previous = state(cursor, before) ?? {};
+  if (previous.pendingWindows?.[key]) return cursor;
+  const pending = new Set(pendingMessages(cursor, before).map(messageKey));
+  if (messages.some((m) => !pending.has(messageKey(m)))) throw Error("window is not pending");
+  const progress = acknowledgedProgress(cursor, before);
+  for (const m of messages) delete progress.messageVersions[messageIdentity(m)];
+  return update(cursor, before, { ...progress, messageKeys: Object.values(progress.messageVersions),
+    status: "partial", revision: before.revision, lastMessageAt: before.lastMessageAt,
+    pendingWindows: { ...previous.pendingWindows, [key]: { planArtifactId, revision: before.revision,
+      messageKeys: messages.map(messageKey) } } });
+}
+
+// Reconcile every operation in the persisted plan, even if the source has since
+// changed. This only retires an uncertainty, NOT acknowledges transcript work.
+// Do not replay a superseded plan; verify prior writes/absence, then analyze the
+// current pending messages. Keep all receipts and plan references as provenance.
+export function reconcileWindow(cursor, s, key, receipts) {
+  const previous = state(cursor, s);
+  if (!previous?.pendingWindows?.[key] || !Array.isArray(receipts)) throw Error("pending window and verified receipts required");
+  const pendingWindows = { ...previous.pendingWindows };
+  const plan = pendingWindows[key];
+  delete pendingWindows[key];
+  return update(cursor, s, { pendingWindows, receipts: [...(previous.receipts ?? []), ...receipts],
+    reconciledPlans: [...(previous.reconciledPlans ?? []), { key, ...plan, receipts }] });
+}
+
 export function checkpointWindow(cursor, before, after, messages, receipts, now = Date.now()) {
   assertStable(before, after, now);
   const pending = new Set(pendingMessages(cursor, before).map(messageKey));
@@ -141,7 +174,8 @@ export function checkpointWindow(cursor, before, after, messages, receipts, now 
 
 export function completeSession(cursor, before, after, { eventsComplete = false, now = Date.now() } = {}) {
   assertStable(before, after, now);
-  if (!eventsComplete || pendingMessages(cursor, before).length) throw Error("session is not fully processed");
+  if (!eventsComplete || pendingMessages(cursor, before).length
+    || Object.keys(state(cursor, before)?.pendingWindows ?? {}).length) throw Error("session is not fully processed");
   return update(cursor, before, { ...acknowledgedProgress(cursor, before), status: "processed", revision: before.revision,
     lastMessageAt: before.lastMessageAt, resolvedAt: new Date(now).toISOString() });
 }
@@ -149,6 +183,7 @@ export function completeSession(cursor, before, after, { eventsComplete = false,
 export function skipTrivial(cursor, before, after, reason, now = Date.now()) {
   assertStable(before, after, now);
   if (!reason?.trim()) throw Error("trivial reason required");
+  if (Object.keys(state(cursor, before)?.pendingWindows ?? {}).length) throw Error("reconcile pending writes before skipping");
   return update(cursor, before, { ...acknowledgedProgress(cursor, before), status: "skipped-trivial", revision: before.revision,
     lastMessageAt: before.lastMessageAt, reason, resolvedAt: new Date(now).toISOString() });
 }
@@ -156,7 +191,10 @@ export function skipTrivial(cursor, before, after, reason, now = Date.now()) {
 // Store adapter contract: find must exhaustively reconcile a durable operation
 // key (including a prior write whose response was lost); read must verify both
 // provenance and credential filtering. Single collector per host, no blind retries.
-export async function plantOnce(store, operationKey, sanitizedRecord) {
+export async function plantOnce(store, operationKey, sanitizedRecord, { cursor, session, planKey } = {}) {
+  if (!cursor || !session || !state(cursor, session)?.pendingWindows?.[planKey]) {
+    throw Error("persist/read back beginWindow intent before store writes");
+  }
   const found = await store.find(operationKey);
   const id = found ?? await store.write(operationKey, sanitizedRecord);
   await store.verify(id, operationKey);

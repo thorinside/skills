@@ -88,13 +88,22 @@ starve old history under sustained arrivals; no fairness policy is added.
 from a small driver and persist the returned object through your store tools:
 
 ```js
-import { pendingMessages, checkpointWindow, completeSession, skipTrivial,
-  windowKey, plantOnce } from "/path/to/readers/collector-state.mjs";
+import { pendingMessages, beginWindow, reconcileWindow, checkpointWindow,
+  completeSession, skipTrivial, windowKey, plantOnce } from "/path/to/readers/collector-state.mjs";
 // Read selected session with its bundled reader, retain `before`.
 const pending = pendingMessages(cursor, before);
-// Analyze a window, persist its sanitized plan + stable operation keys BEFORE
-// writes, reconcile each write, verify all pipelines/stores. Then re-read `after`.
-cursor = checkpointWindow(cursor, before, after, window, verifiedReceiptIds);
+// Analyze a window and persist/read back its sanitized plan + operation keys.
+const key = windowKey(host, before, window, cursor);
+// Re-read `after`, then persist/read back the returned cursor BEFORE writes:
+cursor = beginWindow(cursor, before, after, window, key, planArtifactId);
+// Each store operation uses the saved intent:
+const receipt = await plantOnce(store, operationKey, sanitizedRecord,
+  { cursor, session: before, planKey: key });
+// Verify ALL operations/pipelines, then retire the pending intent and persist:
+cursor = reconcileWindow(cursor, before, key, verifiedReceiptIds);
+// Re-read `after` again. If changed, leave messages pending (do not replay an
+// obsolete plan); reconcile old writes before analyzing the new revision.
+cursor = checkpointWindow(cursor, before, after, window, []);
 // Persist/read back cursor. Partial remains partial; do not restart its windows.
 // At end, re-read `after` again and verify the session-level event scan:
 cursor = completeSession(cursor, before, after, { eventsComplete: true });
@@ -104,7 +113,14 @@ This is not an ingestion engine; the agent still runs extraction, credential
 filtering, matching, store verification and persistence. `plantOnce` accepts an
 adapter with `find(operationKey) → id|null`, `write(key,sanitizedRecord) → id`,
 `verify(id,key)`; `find` must exhaustively reconcile a previous uncertain write
-and `verify` must throw on missing content/provenance or secrets. Operation
+and `verify` must throw on missing content/provenance or secrets. `plantOnce`
+requires the saved `beginWindow` intent; an external plan alone is not enough.
+Intent invalidates affected old acknowledgements and makes the session partial
+before writes, so a lost B reply followed by restored A cannot hide behind an
+old A completion. `reconcileWindow` retires an uncertainty without acknowledging
+messages, preserving receipt/plan provenance. Verify prior writes/absence rather
+than replaying a superseded plan. Missing provider proof leaves the intent
+pending; completion and trivial-skip helpers reject outstanding intents. Operation
 keys must be persisted with the extraction plan and include window, store and
 item identity. No store support for safe reconciliation → stop/report pending,
 not blind retries. The fake-store test proves helper retry behavior, not live
@@ -117,7 +133,7 @@ State compatibility:
   sources. Do not rewrite production cursors just to migrate. New transitions
   add only `collectorV2: {version:2,policy:"newest-first",sources:{<tool>:{
   sessions:{<id>:{status,revision,generation,lastMessageAt,resolvedAt,messageKeys,
-  messageVersions,receipts,legacyBaseline}}}}}`.
+  messageVersions,receipts,legacyBaseline,pendingWindows,reconciledPlans}}}}}`.
 - Sidecar revision equality resolves processed/trivial entries; changed revisions
   reopen them. `partial` entries retain current acknowledged fingerprints by
   message identity (`messageVersions`, with `messageKeys` as its current values)
