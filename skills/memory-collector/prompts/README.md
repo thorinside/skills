@@ -29,7 +29,12 @@ The originals are TypeScript template strings; interpolations appear as
 - `{{EARLIER_CONVERSATION}}` / `{{MOST_RECENT_MESSAGES}}` — the window split
   from SKILL.md Phase 2. **Every prompt analyzes only the recent window**; the
   earlier section is context that has already been processed. Format messages
-  as speaker-labeled lines.
+  as speaker-labeled lines. "Most Recent" is relative to this session/window,
+  not collection order: newest-first traversal later backfills older sessions.
+  Carry source dates separately from collection dates; older evidence must not
+  overwrite a newer known decision/current fact merely because it was collected
+  later. Preserve it as dated history where useful. On retry/reopen, only pending
+  messages are analysis input; acknowledged messages are context, not new finds.
 - `{{TECHNICAL_CONTEXT}}` — include the marked technical-context block for
   coding-tool sessions; omit it for personal/chat sources.
 - `{{PARTICIPANT_CONTEXT}}` — optional block naming the persona and human if

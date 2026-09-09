@@ -14,8 +14,9 @@
 //
 // Output contract: see readers/README.md. Missing store => empty output, exit 0.
 
-import { readdir, readFile, access } from "node:fs/promises";
+import { readdir } from "node:fs/promises";
 import { join } from "node:path";
+import { readSnapshot, conversationMetadata, newestFirst, isMain, listPage } from "./common.mjs";
 
 const TOOL = "claudecode";
 
@@ -39,28 +40,26 @@ function extractAssistantText(content) {
 }
 
 async function readJsonl(filePath) {
-  let text;
-  try {
-    text = await readFile(filePath, "utf-8");
-  } catch {
-    return [];
-  }
+  const snapshot = await readSnapshot(filePath);
   const records = [];
-  for (const line of text.split("\n")) {
+  let parseComplete = true;
+  for (const line of snapshot.text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      records.push(JSON.parse(trimmed));
+      const record = JSON.parse(trimmed);
+      if (!record || typeof record !== "object") { parseComplete = false; continue; }
+      records.push(record);
     } catch {
-      // skip malformed lines
+      parseComplete = false;
     }
   }
-  return records;
+  return { records, snapshot, parseComplete };
 }
 
 // One pass over a session file: messages (text-only), span, cwd.
 async function parseFile(sessionId, filePath) {
-  const records = await readJsonl(filePath);
+  const { records, snapshot, parseComplete } = await readJsonl(filePath);
   const messages = [];
   let firstTs = null;
   let lastTs = null;
@@ -70,8 +69,8 @@ async function parseFile(sessionId, filePath) {
     if (record.type !== "user" && record.type !== "assistant") continue;
     const ts = record.timestamp;
     if (ts) {
-      if (!firstTs || ts < firstTs) firstTs = ts;
-      if (!lastTs || ts > lastTs) lastTs = ts;
+      if (!firstTs || Date.parse(ts) < Date.parse(firstTs)) firstTs = ts;
+      if (!lastTs || Date.parse(ts) > Date.parse(lastTs)) lastTs = ts;
     }
     if (!cwd && record.cwd) cwd = record.cwd;
 
@@ -92,25 +91,31 @@ async function parseFile(sessionId, filePath) {
     });
   }
 
-  if (!firstTs || !lastTs) return null;
+  if (!firstTs || !lastTs) {
+    if (parseComplete) return null;
+    firstTs = lastTs = snapshot.lastModifiedAt;
+  }
   messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  return { sessionId, filePath, cwd, firstTs, lastTs, messages };
+  return { sessionId, filePath, cwd, firstTs, lastTs, messages,
+    metadata: conversationMetadata(messages, snapshot, parseComplete) };
 }
 
 async function* sessionFiles(root) {
   let projectDirs;
   try {
     projectDirs = await readdir(root);
-  } catch {
-    return;
+  } catch (err) {
+    if (err.code === "ENOENT") return;
+    throw err;
   }
   for (const dir of projectDirs) {
     if (dir.startsWith(".")) continue;
     let files;
     try {
       files = await readdir(join(root, dir));
-    } catch {
-      continue;
+    } catch (err) {
+      if (err.code === "ENOTDIR") continue;
+      throw err;
     }
     for (const f of files) {
       if (!f.endsWith(".jsonl")) continue;
@@ -130,22 +135,23 @@ function toListEntry(parsed) {
     lastMessageAt: parsed.lastTs,
     messageCount: parsed.messages.length,
     path: parsed.filePath,
+    ...parsed.metadata,
   };
 }
 
-async function list(root, since) {
+export async function list(root = defaultRoot(), since) {
   const out = [];
   for await (const { id, path } of sessionFiles(root)) {
     const parsed = await parseFile(id, path);
-    if (!parsed || parsed.messages.length === 0) continue;
-    if (since && parsed.lastTs <= since) continue;
+    if (!parsed || (parsed.messages.length === 0 && parsed.metadata.parseComplete)) continue;
+    if (since && Date.parse(parsed.lastTs) <= Date.parse(since)) continue;
     out.push(toListEntry(parsed));
   }
-  out.sort((a, b) => new Date(a.lastMessageAt) - new Date(b.lastMessageAt));
+  out.sort(newestFirst);
   return out;
 }
 
-async function session(root, sessionId) {
+export async function session(root = defaultRoot(), sessionId) {
   for await (const { id, path } of sessionFiles(root)) {
     if (id !== sessionId) continue;
     const parsed = await parseFile(id, path);
@@ -156,25 +162,20 @@ async function session(root, sessionId) {
 }
 
 // --- CLI ---
-const args = process.argv.slice(2);
-function flag(name) {
-  const i = args.indexOf(name);
-  return i === -1 ? undefined : args[i + 1];
-}
-const root = flag("--root") ?? defaultRoot();
+if (isMain(import.meta.url)) {
+  const args = process.argv.slice(2);
+  function flag(name) {
+    const i = args.indexOf(name);
+    return i === -1 ? undefined : args[i + 1];
+  }
+  const root = flag("--root") ?? defaultRoot();
 
-try {
-  await access(root);
-} catch {
-  process.stdout.write(args.includes("--list") ? "[]\n" : "null\n");
-  process.exit(0);
-}
-
-if (args.includes("--list")) {
-  process.stdout.write(JSON.stringify(await list(root, flag("--since")), null, 2) + "\n");
-} else if (flag("--session")) {
-  process.stdout.write(JSON.stringify(await session(root, flag("--session")), null, 2) + "\n");
-} else {
-  process.stderr.write("usage: claude_code.mjs --list [--since ISO] | --session <id>  [--root <dir>]\n");
-  process.exit(2);
+  if (args.includes("--list")) {
+    process.stdout.write(JSON.stringify(listPage(await list(root), args), null, 2) + "\n");
+  } else if (flag("--session")) {
+    process.stdout.write(JSON.stringify(await session(root, flag("--session")), null, 2) + "\n");
+  } else {
+    process.stderr.write("usage: claude_code.mjs --list [--since ISO] [--limit N] [--offset N] | --session <id> [--root <dir>]\n");
+    process.exit(2);
+  }
 }
