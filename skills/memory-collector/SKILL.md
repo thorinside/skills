@@ -129,9 +129,11 @@ reader. From that output:
   lack fingerprints: only analyze the suffix beyond their recorded last-message
   timestamp (or resolution time if that is all they retained). Reconcile
   existing source-tagged items before any legacy replay. Unknown legacy times
-  are reported as `legacy-review`, never guessed. Equal-timestamp historical
-  rewrites cannot be detected reliably without a prior revision; this is a
-  legacy limitation, not permission to re-ingest everything.
+  are reported as `legacy-review`, never guessed. The first stable V2 transition
+  fingerprints the already-resolved legacy prefix (`legacyBaseline:true`) without
+  replanting it; subsequent edits use hashes, not the old timestamp cutoff.
+  Equal-timestamp rewrites **before that baseline** cannot be detected reliably;
+  this is a legacy limitation, not permission to re-ingest everything.
 
 ## Phase 3 — extract
 

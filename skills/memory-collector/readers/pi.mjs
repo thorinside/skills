@@ -172,13 +172,13 @@ export async function list(roots = defaultRoots(), since) {
 }
 
 export async function session(roots = defaultRoots(), sessionId) {
+  const matches = [];
   for await (const { uuid, dirCwd, path } of sessionFiles(roots)) {
     if (uuid !== sessionId) continue;
     const parsed = await parseFile(uuid, dirCwd, path);
-    if (!parsed) return null;
-    return { ...toListEntry(parsed), messages: parsed.messages };
+    if (parsed) matches.push({ ...toListEntry(parsed), messages: parsed.messages });
   }
-  return null;
+  return matches.sort(newestFirst)[0] ?? null;
 }
 
 // --- CLI ---

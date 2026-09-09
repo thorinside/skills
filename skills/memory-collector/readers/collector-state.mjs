@@ -86,13 +86,26 @@ export function assertStable(before, after, now = Date.now()) {
 }
 
 export function pendingMessages(cursor, s) {
-  const done = new Set(state(cursor, s)?.messageKeys ?? []);
+  const current = state(cursor, s);
+  const done = new Set(current?.messageKeys ?? []);
   const legacy = legacyRecord(cursor, s);
   if (legacy?.status === "processed" && legacy.cutoff === null) throw Error("legacy provenance reconciliation required");
-  // Legacy records lack hashes: retain their historical prefix, analyze only
-  // the timestamp-new suffix. Equal-timestamp rewrites need manual reconciliation.
+  // Use the legacy time boundary only until a stable read establishes prefix
+  // fingerprints. After that, even same-timestamp edits must be reconsidered.
   return s.messages.filter((m) => !done.has(messageKey(m))
-    && !(legacy?.status === "processed" && Date.parse(m.timestamp) <= legacy.cutoff));
+    && !(legacy?.status === "processed" && !current?.legacyBaseline
+      && Date.parse(m.timestamp) <= legacy.cutoff));
+}
+
+function acknowledgedProgress(cursor, s) {
+  const previous = state(cursor, s) ?? {};
+  const legacy = legacyRecord(cursor, s);
+  const establishBaseline = !previous.legacyBaseline && legacy?.status === "processed"
+    && legacy.cutoff !== null && Array.isArray(s.messages);
+  const prefixKeys = establishBaseline
+    ? s.messages.filter((m) => Date.parse(m.timestamp) <= legacy.cutoff).map(messageKey) : [];
+  return { messageKeys: [...new Set([...(previous.messageKeys ?? []), ...prefixKeys])],
+    ...(previous.legacyBaseline || establishBaseline ? { legacyBaseline: true } : {}) };
 }
 
 export function windowKey(host, s, messages, pipeline = "window") {
@@ -105,23 +118,24 @@ export function checkpointWindow(cursor, before, after, messages, receipts, now 
   if (!messages.length || messages.some((m) => !pending.has(messageKey(m)))) throw Error("window is not pending");
   if (!Array.isArray(receipts)) throw Error("verified receipt list required (empty for empty extraction)");
   const previous = state(cursor, before) ?? {};
-  return update(cursor, before, { status: "partial", revision: before.revision,
+  const progress = acknowledgedProgress(cursor, before);
+  return update(cursor, before, { ...progress, status: "partial", revision: before.revision,
     lastMessageAt: before.lastMessageAt,
-    messageKeys: [...new Set([...(previous.messageKeys ?? []), ...messages.map(messageKey)])],
+    messageKeys: [...new Set([...progress.messageKeys, ...messages.map(messageKey)])],
     receipts: [...(previous.receipts ?? []), ...receipts] });
 }
 
 export function completeSession(cursor, before, after, { eventsComplete = false, now = Date.now() } = {}) {
   assertStable(before, after, now);
   if (!eventsComplete || pendingMessages(cursor, before).length) throw Error("session is not fully processed");
-  return update(cursor, before, { status: "processed", revision: before.revision,
+  return update(cursor, before, { ...acknowledgedProgress(cursor, before), status: "processed", revision: before.revision,
     lastMessageAt: before.lastMessageAt, resolvedAt: new Date(now).toISOString() });
 }
 
 export function skipTrivial(cursor, before, after, reason, now = Date.now()) {
   assertStable(before, after, now);
   if (!reason?.trim()) throw Error("trivial reason required");
-  return update(cursor, before, { status: "skipped-trivial", revision: before.revision,
+  return update(cursor, before, { ...acknowledgedProgress(cursor, before), status: "skipped-trivial", revision: before.revision,
     lastMessageAt: before.lastMessageAt, reason, resolvedAt: new Date(now).toISOString() });
 }
 

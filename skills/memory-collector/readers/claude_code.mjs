@@ -152,13 +152,15 @@ export async function list(root = defaultRoot(), since) {
 }
 
 export async function session(root = defaultRoot(), sessionId) {
+  const matches = [];
   for await (const { id, path } of sessionFiles(root)) {
     if (id !== sessionId) continue;
     const parsed = await parseFile(id, path);
-    if (!parsed) return null;
-    return { ...toListEntry(parsed), messages: parsed.messages };
+    if (parsed && (parsed.messages.length || !parsed.metadata.parseComplete)) {
+      matches.push({ ...toListEntry(parsed), messages: parsed.messages });
+    }
   }
-  return null;
+  return matches.sort(newestFirst)[0] ?? null;
 }
 
 // --- CLI ---

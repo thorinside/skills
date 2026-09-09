@@ -1,13 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { readFile, writeFile, utimes } from "node:fs/promises";
+import { readFile, writeFile, utimes, mkdir, copyFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fixture, NOW, at } from "./fixtures.mjs";
 import * as claude from "../claude_code.mjs";
 import * as pi from "../pi.mjs";
 import * as codex from "../codex.mjs";
 import { conversationMetadata } from "../common.mjs";
-import { selectSessions } from "../collector-state.mjs";
+import { selectSessions, checkpointWindow, completeSession, pendingMessages, resolution } from "../collector-state.mjs";
 
 test("workflow envelope is pre-budget automation, substantive human follow-up defeats it", () => {
   const user = { id: "one", role: "user", timestamp: at("10:00"),
@@ -55,4 +55,49 @@ test("message spans compare instants rather than lexicographic timezone strings"
     assert.equal(Date.parse(s.firstMessageAt), Date.parse(at("06:00")));
     assert.equal(Date.parse(s.lastMessageAt), Date.parse(at("11:00")));
   }
+});
+
+test("conversion selects the same duplicate Pi/OMP and Claude identity as metadata selection", async (t) => {
+  const sessions = [{ tool: "pi", id: "duplicate", date: at("08:00") },
+    { tool: "claudecode", id: "duplicate", date: at("08:00") }];
+  const first = await fixture({ sessions }); t.after(() => first.close());
+  const second = await fixture({ sessions: sessions.map((s) => ({ ...s, date: at("10:00") })) });
+  t.after(() => second.close());
+  const roots = [first.roots.pi, second.roots.pi];
+  const row = selectSessions(await pi.list(roots), {}, { now: NOW }).selected[0];
+  const converted = await pi.session(roots, "duplicate");
+  assert.equal(converted.lastMessageAt, at("10:00"));
+  assert.equal(converted.fileVersion, row.fileVersion);
+  assert.equal(converted.revision, row.revision);
+  assert.equal((await pi.session([...roots].reverse(), "duplicate")).fileVersion, row.fileVersion);
+  const dir = join(first.roots.claudecode, "z-copy"); await mkdir(dir);
+  const copy = join(dir, "duplicate.jsonl");
+  await copyFile(second.paths.duplicate, copy); await utimes(copy, new Date(at("10:00")), new Date(at("10:00")));
+  const claudeRow = selectSessions(await claude.list(first.roots.claudecode), {}, { now: NOW }).selected[0];
+  assert.equal((await claude.session(first.roots.claudecode, "duplicate")).fileVersion, claudeRow.fileVersion);
+  // Equal timestamp copies use the same path tie-break, independent of traversal.
+  await first.put({ tool: "pi", id: "duplicate", date: at("10:00") });
+  const tied = selectSessions(await pi.list(roots), {}, { now: NOW }).selected[0];
+  assert.equal((await pi.session([...roots].reverse(), "duplicate")).fileVersion, tied.fileVersion);
+});
+
+test("legacy prefix is baselined once; a later same-time correction is pending after V2 completion", async (t) => {
+  const f = await fixture(); t.after(() => f.close());
+  const before = await pi.session([f.roots.pi], "newest");
+  const legacy = { pi: { processed: { newest: { lastMessageAt: before.messages[1].timestamp,
+    memoryIds: ["old-item"] } }, highWater: at("11:00") } };
+  let cursor = checkpointWindow(legacy, before, before, pendingMessages(legacy, before), [], NOW);
+  cursor = completeSession(cursor, before, before, { eventsComplete: true, now: NOW });
+  assert.equal(cursor.collectorV2.sources.pi.sessions.newest.legacyBaseline, true);
+  assert.deepEqual(cursor.pi, legacy.pi);
+  const text = (await readFile(f.paths.newest, "utf8")).replace("Human design conversation 0", "Corrected historical decision");
+  await writeFile(f.paths.newest, text); await utimes(f.paths.newest, new Date(at("10:00")), new Date(at("10:00")));
+  const changed = await pi.session([f.roots.pi], "newest");
+  assert.equal(resolution(cursor, changed), "changed");
+  assert.equal(pendingMessages(cursor, changed).length, 1);
+  assert.equal(pendingMessages(cursor, changed)[0].id, before.messages[0].id);
+  assert.throws(() => completeSession(cursor, changed, changed, { eventsComplete: true, now: NOW }), /not fully/);
+  cursor = checkpointWindow(cursor, changed, changed, pendingMessages(cursor, changed), ["updated-old-item"], NOW);
+  cursor = completeSession(cursor, changed, changed, { eventsComplete: true, now: NOW });
+  assert.equal(pendingMessages(cursor, changed).length, 0);
 });

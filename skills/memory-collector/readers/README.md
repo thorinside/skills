@@ -70,7 +70,8 @@ reads, `live:true`, explicit repeatable `--live-id tool:id`, and the current
 `PI_SESSION_ID`. It precedes all resolution/trivial checks. Duplicate source IDs
 across Pi/OMP copies collapse to the newest entry, then path tie-break; if **any**
 copy is live the identity is excluded. Verify `--session` conversion matches the
-selected fileVersion/revision before acting.
+selected fileVersion/revision before acting. Source conversion uses the same
+newest/time/ID/path resolution as selection, not the first enumerated copy.
 
 Trivial means <4 cleaned messages, no user messages, or only recognized machine
 prompts (including the Substrate worker/outcome envelope). Automation detection
@@ -115,7 +116,7 @@ State compatibility:
 - Preserve **all** legacy fields, timestamps, stored references and unknown
   sources. Do not rewrite production cursors just to migrate. New transitions
   add only `collectorV2: {version:2,policy:"newest-first",sources:{<tool>:{
-  sessions:{<id>:{status,revision,lastMessageAt,resolvedAt,messageKeys,receipts}}}}}`.
+  sessions:{<id>:{status,revision,lastMessageAt,resolvedAt,messageKeys,receipts,legacyBaseline}}}}}`.
 - Sidecar revision equality resolves processed/trivial entries; changed revisions
   reopen them. `partial` entries retain completed-message hashes and receipt IDs.
   Never mark an entire session complete until every pending message and event
@@ -124,8 +125,11 @@ State compatibility:
   processedAt/skippedAt/at (or string timestamp) is the per-session boundary.
   Reopened processed sessions analyze only the timestamp-new suffix and reconcile
   existing provenance. Missing times → `legacy-review`, unresolved, no budget.
-  Same-timestamp rewrites of legacy records cannot be detected without old
-  fingerprints; do not claim otherwise. New sidecar records detect those edits.
+  At the first stable V2 transition, fingerprint only the **already-resolved**
+  historical prefix and record `legacyBaseline:true` (no replay). From then on,
+  use fingerprints instead of the legacy cutoff, so later same-time edits are
+  pending. Rewrites predating that baseline cannot be detected without old hashes;
+  do not claim otherwise. No unresolved session is baselined by a global timestamp.
 - `highWater` and `high_water_mark` remain historical, unchanged, never fences.
   Legacy `skipped_live` is not completion. No blanket processed set, map pruning,
   implicit age cutoff, or backlog compaction.
