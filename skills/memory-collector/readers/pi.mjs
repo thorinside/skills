@@ -16,8 +16,8 @@
 //
 // Output contract: see readers/README.md. Missing store => empty output, exit 0.
 
-import { readdir, readFile } from "node:fs/promises";
-import { existsSync } from "node:fs";
+import { readdir } from "node:fs/promises";
+import { readSnapshot, conversationMetadata, newestFirst, isMain, listPage } from "./common.mjs";
 import { join } from "node:path";
 
 const TOOL = "pi";
@@ -57,27 +57,25 @@ function extractText(content) {
 }
 
 async function readJsonl(filePath) {
-  let text;
-  try {
-    text = await readFile(filePath, "utf-8");
-  } catch {
-    return [];
-  }
+  const snapshot = await readSnapshot(filePath);
   const entries = [];
-  for (const line of text.split("\n")) {
+  let parseComplete = true;
+  for (const line of snapshot.text.split("\n")) {
     const trimmed = line.trim();
     if (!trimmed) continue;
     try {
-      entries.push(JSON.parse(trimmed));
+      const entry = JSON.parse(trimmed);
+      if (!entry || typeof entry !== "object") { parseComplete = false; continue; }
+      entries.push(entry);
     } catch {
-      // skip malformed lines
+      parseComplete = false;
     }
   }
-  return entries;
+  return { entries, snapshot, parseComplete };
 }
 
 async function parseFile(uuid, dirCwd, filePath) {
-  const entries = await readJsonl(filePath);
+  const { entries, snapshot, parseComplete } = await readJsonl(filePath);
   const messages = [];
   let cwd = "";
   let firstTs = null;
@@ -98,8 +96,8 @@ async function parseFile(uuid, dirCwd, filePath) {
 
     const ts = entry.timestamp;
     if (ts) {
-      if (!firstTs || ts < firstTs) firstTs = ts;
-      if (!lastTs || ts > lastTs) lastTs = ts;
+      if (!firstTs || Date.parse(ts) < Date.parse(firstTs)) firstTs = ts;
+      if (!lastTs || Date.parse(ts) > Date.parse(lastTs)) lastTs = ts;
     }
 
     messages.push({
@@ -110,27 +108,32 @@ async function parseFile(uuid, dirCwd, filePath) {
     });
   }
 
-  if (!firstTs || !lastTs || messages.length === 0) return null;
+  if (!firstTs || !lastTs || messages.length === 0) {
+    if (parseComplete) return null;
+    firstTs = lastTs = snapshot.lastModifiedAt;
+  }
   messages.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-  return { sessionId: uuid, filePath, cwd: cwd || dirCwd, firstTs, lastTs, messages };
+  return { sessionId: uuid, filePath, cwd: cwd || dirCwd, firstTs, lastTs, messages,
+    metadata: conversationMetadata(messages, snapshot, parseComplete) };
 }
 
 async function* sessionFiles(roots) {
   for (const root of roots) {
-    if (!existsSync(root)) continue;
     let cwdDirs;
     try {
       cwdDirs = await readdir(root);
-    } catch {
-      continue;
+    } catch (err) {
+      if (err.code === "ENOENT") continue;
+      throw err;
     }
     for (const dir of cwdDirs) {
       if (dir.startsWith(".")) continue;
       let files;
       try {
         files = await readdir(join(root, dir));
-      } catch {
-        continue;
+      } catch (err) {
+        if (err.code === "ENOTDIR") continue;
+        throw err;
       }
       for (const f of files) {
         if (!f.endsWith(".jsonl")) continue;
@@ -152,49 +155,47 @@ function toListEntry(parsed) {
     lastMessageAt: parsed.lastTs,
     messageCount: parsed.messages.length,
     path: parsed.filePath,
+    ...parsed.metadata,
   };
 }
 
-async function list(roots, since) {
+export async function list(roots = defaultRoots(), since) {
   const out = [];
   for await (const { uuid, dirCwd, path } of sessionFiles(roots)) {
     const parsed = await parseFile(uuid, dirCwd, path);
     if (!parsed) continue;
-    if (since && parsed.lastTs <= since) continue;
+    if (since && Date.parse(parsed.lastTs) <= Date.parse(since)) continue;
     out.push(toListEntry(parsed));
   }
-  out.sort((a, b) => new Date(a.lastMessageAt) - new Date(b.lastMessageAt));
+  out.sort(newestFirst);
   return out;
 }
 
-async function session(roots, sessionId) {
+export async function session(roots = defaultRoots(), sessionId) {
+  const matches = [];
   for await (const { uuid, dirCwd, path } of sessionFiles(roots)) {
     if (uuid !== sessionId) continue;
     const parsed = await parseFile(uuid, dirCwd, path);
-    if (!parsed) return null;
-    return { ...toListEntry(parsed), messages: parsed.messages };
+    if (parsed) matches.push({ ...toListEntry(parsed), messages: parsed.messages });
   }
-  return null;
+  return matches.sort(newestFirst)[0] ?? null;
 }
 
 // --- CLI ---
-const args = process.argv.slice(2);
-function flag(name) {
-  const i = args.indexOf(name);
-  return i === -1 ? undefined : args[i + 1];
-}
-const roots = flag("--root") ? [flag("--root")] : defaultRoots();
+if (isMain(import.meta.url)) {
+  const args = process.argv.slice(2);
+  function flag(name) {
+    const i = args.indexOf(name);
+    return i === -1 ? undefined : args[i + 1];
+  }
+  const roots = flag("--root") ? [flag("--root")] : defaultRoots();
 
-if (!roots.some((r) => existsSync(r))) {
-  process.stdout.write(args.includes("--list") ? "[]\n" : "null\n");
-  process.exit(0);
-}
-
-if (args.includes("--list")) {
-  process.stdout.write(JSON.stringify(await list(roots, flag("--since")), null, 2) + "\n");
-} else if (flag("--session")) {
-  process.stdout.write(JSON.stringify(await session(roots, flag("--session")), null, 2) + "\n");
-} else {
-  process.stderr.write("usage: pi.mjs --list [--since ISO] | --session <id>  [--root <dir>]\n");
-  process.exit(2);
+  if (args.includes("--list")) {
+    process.stdout.write(JSON.stringify(listPage(await list(roots), args), null, 2) + "\n");
+  } else if (flag("--session")) {
+    process.stdout.write(JSON.stringify(await session(roots, flag("--session")), null, 2) + "\n");
+  } else {
+    process.stderr.write("usage: pi.mjs --list [--since ISO] [--limit N] [--offset N] | --session <id> [--root <dir>]\n");
+    process.exit(2);
+  }
 }

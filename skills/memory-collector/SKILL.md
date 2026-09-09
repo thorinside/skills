@@ -29,8 +29,10 @@ produces. Don't make the collector perfect; make the pair converge.
 2. **Stores are additive.** The collector creates and updates memory items; it
    never deletes. Anything that looks delete-worthy is the gardener's job.
 3. **Budget every run.** Default: **3 sessions** (or ~150 messages) per run,
-   oldest unprocessed first. Stop at the budget; the cursor makes the next run
-   continue cleanly.
+   **newest eligible first across all supported sources on this host**, ordered
+   by `lastMessageAt` descending, then tool and session ID ascending (code-point
+   order; path breaks duplicate-ID ties). Filter live, completed and trivial
+   sessions **before** spending budget. Stop at the budget; retain the backlog.
 4. **Skip live sessions.** A transcript modified in the last ~30 minutes (or
    whose tool is plainly mid-session) gets skipped — half-written sessions
    extract badly. It will be there next run.
@@ -46,9 +48,14 @@ produces. Don't make the collector perfect; make the pair converge.
 ## Phase 0 — survey
 
 **Transcript sources.** The skill bundles dependency-free Node readers
-([`readers/`](readers/README.md)) — run each with
-`node readers/<tool>.mjs --list --since <cursor high-water mark>` to discover
-what exists. **Do not parse session stores by hand**: the readers already
+([`readers/`](readers/README.md)). Use the read-only cross-source selector:
+`node readers/select.mjs --cursor <local-cursor-snapshot.json> --host <host> --budget 3`.
+Omit `--cursor` on the first run. Copy the **entire**, paged host cursor to a
+private local snapshot; never substitute a truncated response. For source
+inspection use `node readers/<tool>.mjs --list --limit 100 --offset 0` and page
+as needed. **Do not use `--since highWater` for collection**: it excludes older
+unresolved holes as well as the backlog. The selector inventories all history
+internally but returns bounded metadata, not transcript text. **Do not parse session stores by hand**: the readers already
 encode the format traps (sidechain files, tool-result records masquerading as
 user messages, lossy cwd encodings).
 
@@ -64,25 +71,43 @@ gardener's Phase 0 does — memory search/mutation, knowledge graph, diary, stat
 Don't assume tool names.
 
 **The cursor.** Find the previous collection state: a memory item or artifact
-tagged `collector-cursor` holding, per source: a `highWater` timestamp (pass it
-as `--since` when listing) plus maps of processed and skipped-trivial session
-ids → timestamps (the maps are the sole source of truth — EI's
-`processed_sessions` pattern; `highWater` is the cheap pre-filter that keeps a
-noisy source from re-listing hundreds of already-judged sessions every run).
-No cursor → first run: start with the **most recent few sessions**, not all of
-history; backfill over subsequent runs.
+tagged `collector-cursor`. Preserve every existing field, processed/skipped ID,
+timestamp, stored-item reference, provenance and unknown source. Both nested
+Mac `sources` maps and flat dev maps/`skipped_trivial` arrays are supported by
+`readers/collector-state.mjs`. Legacy `highWater`/`high_water_mark` values are
+**historical only**: leave them unchanged, never use them as traversal fences.
+New per-session revisions and partial progress live in the additive
+`collectorV2.sources.<tool>.sessions.<id>` sidecar; the sidecar plus legacy
+resolved IDs (not a global timestamp) determine completion.
+No cursor → first run: select the most recent eligible few; all older sessions
+remain discoverable. Every future run starts discovery at the newest arrivals
+and descends unresolved history. Under sustained new input, latest-first can
+still **starve history**; no fairness quota or different policy is implied.
 
 ## Phase 1 — select
 
-From each available source, list sessions not in the cursor, oldest first, and
-take sessions up to the budget. Apply the live-session guard (rule 4). The
-readers supply `title` (cwd-derived) and `messageCount` per session.
+Use `readers/select.mjs` to merge sources before taking the budget, not a
+separate budget or source-order loop per tool. It applies the 30-minute mtime
+and message-time guard, resolved-revision check and known trivial filters.
+Pass `--live-id <tool>:<id>` for any session known to be active (repeatable);
+the current `PI_SESSION_ID` is automatically excluded. A live or unstable
+session is never marked trivial/completed. Unreadable or malformed sources
+remain unresolved and are reported, not silently classified as empty.
+
+The returned `selected` entries are candidates, not spent budget. Confirm real
+human conversation with the bundled `--session` reader before extraction;
+unknown automation templates require this check. Check the converted revision
+and fileVersion against the selected entry. If plainly machine-generated,
+record an honest stable `skipTrivial` transition and refill from the selector
+using the updated snapshot and remaining budget. Never replace a failed or
+partially analyzed session with extra sessions beyond the run budget.
 
 **Prefer real conversations.** Agent automation produces sessions too — a Pi
 store can hold a thousand mechanical runner-job sessions for every human one.
 Skip sessions that are tiny (fewer than ~4 messages) or whose opening message
-is plainly a machine-generated job prompt, and record them in the cursor as
-`skipped-trivial` so they are never re-listed. Spending the budget on noise is
+is plainly a machine-generated job prompt with no substantive human follow-up,
+and record them in the cursor as `skipped-trivial` for that revision. A changed
+or reopened session must be reconsidered after it settles. Spending the budget on noise is
 how a collector starves.
 
 ## Phase 2 — convert
@@ -98,6 +123,17 @@ reader. From that output:
   window itself is the "Most Recent Messages" and a compact tail of what came
   before is the "Earlier Conversation" — the shipped prompts are built around
   exactly this split and only ever analyze the recent window.
+- Use `pendingMessages(cursor, session)` from `readers/collector-state.mjs` to
+  exclude acknowledged message fingerprints on retries/reopens. Preserve the
+  full conversation for context, not for replanting. Legacy processed records
+  lack fingerprints: only analyze the suffix beyond their recorded last-message
+  timestamp (or resolution time if that is all they retained). Reconcile
+  existing source-tagged items before any legacy replay. Unknown legacy times
+  are reported as `legacy-review`, never guessed. The first stable V2 transition
+  fingerprints the already-resolved legacy prefix (`legacyBaseline:true`) without
+  replanting it; subsequent edits use hashes, not the old timestamp cutoff.
+  Equal-timestamp rewrites **before that baseline** cannot be detected reliably;
+  this is a legacy limitation, not permission to re-ingest everything.
 
 ## Phase 3 — extract
 
@@ -132,13 +168,50 @@ is the door these newcomers are supposed to walk through. If both a fast store
 and a structured knowledge store exist, put summaries where retrieval happens
 and structure (entities, links) where the graph lives.
 
-## Phase 5 — advance the cursor & report
+**Retry safety is distinct from semantic deduplication.** Before any window's
+writes, persist/read back its sanitized extraction plan, stable
+`windowKey(host, session, messages, cursor)` and per-store operation keys/targets in a
+pending artifact beside the cursor. Then call `beginWindow` with that plan ID
+and persist/read back its cursor intent **before any store write**. This
+invalidates affected old message acknowledgements and records the new revision
+generation, even if the source later reverts before a write reply/checkpoint.
+An external plan alone is insufficient: selection must see the pending intent.
+Reuse that plan on retry. Tag each operation with its key and reconcile it via
+exact search/readback before creating again;
+`plantOnce` documents the required store-adapter contract. A write timeout is
+not proof that nothing was written. Use `reconcileWindow` only after every
+planned operation's result/absence has been verified; it retains receipts and
+plan provenance but does not acknowledge messages. Never replay a superseded
+plan after a source change; reconcile its old writes, then analyze current
+pending messages. If a store cannot reconcile an uncertain write, leave it
+pending and report failure rather than blindly retrying.
+Checkpoint a window only after **all** its pipelines and required store writes
+(including empty results) are verified; retain receipt IDs and fingerprints.
+Track the **current** acknowledged fingerprint per message identity, separately
+from historical receipts. A source revision generation in the window key makes
+an A→B→A restoration new work, not a retry of the original A. Within a revision,
+keys stay stable across checkpoints/retries. New or restored messages update the
+same matched item when appropriate; a new operation key does not justify a new
+entity. Reconcile every retained pending plan, even if the source changed while
+a write was uncertain, before completing a reopened session.
 
-Update the cursor only for sessions **fully** processed — a budget-truncated
-session stays uncursored and resumes next run. Also advance each source's
-`highWater` to the newest `lastMessageAt` among sessions you *resolved*
-(processed or skipped-trivial), but never at-or-past a skipped-live session's
-timestamp — live sessions must re-list once they settle. Then report:
+## Phase 5 — checkpoint the cursor & report
+
+Use the pure helpers in `readers/collector-state.mjs` to build a new cursor
+snapshot; they never write production state themselves. Re-read the session
+through its reader before each checkpoint/completion and use `assertStable`
+(via the transition helpers) to reject a changed or live source. Persist and
+read back `checkpointWindow` progress after each verified window. A partial
+session is **not completed**; it retains receipts and resumes on its next
+eligible selection. Mark `completeSession` only after all pending messages and
+the session event scan are verified; `skipTrivial` requires an honest reason.
+Never blanket-mark deferred IDs or remove old map entries. Leave all legacy
+high-water fields unchanged; newer completion cannot conceal older work.
+
+Allow only one collector per host cursor. Re-read the production cursor just
+before persistence and compare it with the snapshot you started from; on a
+concurrent change stop and reconcile rather than overwrite. Page and verify the
+whole saved cursor and report, including preserved maps/provenance. Then report:
 
 ```
 # Collection report — <ISO timestamp>
@@ -146,7 +219,8 @@ Sources: <tool: sessions found / processed / skipped-live>
 Windows analyzed: N · budget used: <sessions>/<max>
 Planted: topics N (new X, updated Y) · people N · events N · facts N · quotes N
 Dropped: secrets-shaped values N · low-confidence extractions N
-Cursor: advanced to <session id / timestamp> per source
+Cursor: resolved <IDs/revisions>; partial <IDs>; legacy high-water unchanged
+Backlog: <eligible deferred count>; oldest discoverable <ID/date>; blocked <IDs/reasons>
 Handoff: <n> new items awaiting the gardener's validate gate
 ```
 
@@ -158,11 +232,11 @@ exactly one `SUBSTRATE_OUTCOME_V1=` declaration. Lifecycle completion is not the
 success signal.
 
 Declare `outcome: "succeeded"` only when every counted session was fully
-processed or honestly skipped, the cursor advanced only across resolved
-sessions, planted items retain provenance, and the report and cursor were
-persisted and read back through the available store. A partial uncursored
-session is allowed only when it is reported as the resume point; lost
-provenance, cursor advancement past unresolved work, secret persistence, or
+processed or honestly skipped, only resolved revisions were marked complete,
+planted items retain provenance, and the report and cursor were persisted and
+read back through the available store. A partial session is allowed only when
+its verified progress and pending writes are retained and reported as a resume
+point; lost provenance, hiding unresolved work behind a timestamp, secret persistence, or
 failure to persist the required report is `outcome: "failed"`. Memory-store
 writes are not Git changes, so use `changes.status: "notApplicable"`.
 
