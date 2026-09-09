@@ -170,7 +170,7 @@ and structure (entities, links) where the graph lives.
 
 **Retry safety is distinct from semantic deduplication.** Before any window's
 writes, persist/read back its sanitized extraction plan, stable
-`windowKey(host, session, messages)` and per-store operation keys/targets in a
+`windowKey(host, session, messages, cursor)` and per-store operation keys/targets in a
 pending artifact beside the cursor. Reuse that plan on retry. Tag each operation
 with its key and reconcile it via exact search/readback before creating again;
 `plantOnce` documents the required store-adapter contract. A write timeout is
@@ -178,7 +178,13 @@ not proof that nothing was written. If a store cannot reconcile an uncertain
 write, leave it pending and report failure rather than blindly retrying.
 Checkpoint a window only after **all** its pipelines and required store writes
 (including empty results) are verified; retain receipt IDs and fingerprints.
-Newly changed messages may update the same matched item, not duplicate it.
+Track the **current** acknowledged fingerprint per message identity, separately
+from historical receipts. A source revision generation in the window key makes
+an A→B→A restoration new work, not a retry of the original A. Within a revision,
+keys stay stable across checkpoints/retries. New or restored messages update the
+same matched item when appropriate; a new operation key does not justify a new
+entity. Reconcile every retained pending plan, even if the source changed while
+a write was uncertain, before completing a reopened session.
 
 ## Phase 5 — checkpoint the cursor & report
 

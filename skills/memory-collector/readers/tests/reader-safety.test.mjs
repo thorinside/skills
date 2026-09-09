@@ -7,7 +7,8 @@ import * as claude from "../claude_code.mjs";
 import * as pi from "../pi.mjs";
 import * as codex from "../codex.mjs";
 import { conversationMetadata } from "../common.mjs";
-import { selectSessions, checkpointWindow, completeSession, pendingMessages, resolution } from "../collector-state.mjs";
+import { selectSessions, checkpointWindow, completeSession, pendingMessages, resolution,
+  windowKey, plantOnce } from "../collector-state.mjs";
 
 test("workflow envelope is pre-budget automation, substantive human follow-up defeats it", () => {
   const user = { id: "one", role: "user", timestamp: at("10:00"),
@@ -100,4 +101,33 @@ test("legacy prefix is baselined once; a later same-time correction is pending a
   cursor = checkpointWindow(cursor, changed, changed, pendingMessages(cursor, changed), ["updated-old-item"], NOW);
   cursor = completeSession(cursor, changed, changed, { eventsComplete: true, now: NOW });
   assert.equal(pendingMessages(cursor, changed).length, 0);
+});
+
+test("A to B to A restoration is new work, while retry operation keys stay stable", async (t) => {
+  const f = await fixture(); t.after(() => f.close());
+  const original = await pi.session([f.roots.pi], "newest");
+  const edited = { ...original, revision: "edited-B", messages: original.messages.map((m, i) =>
+    i ? m : { ...m, content: "Correction B" }) };
+  let cursor = {}, storedContent, writes = 0;
+  const operations = new Map();
+  const store = { find: async (key) => operations.get(key),
+    write: async (key, record) => { writes++; storedContent = record.content; operations.set(key, "same-matched-item"); return "same-matched-item"; },
+    verify: async (id, key) => assert.equal(operations.get(key), id) };
+  const keys = [];
+  for (const s of [original, edited, original]) {
+    const pending = pendingMessages(cursor, s);
+    assert.ok(pending.some((m) => m.id === original.messages[0].id));
+    const key = windowKey("test", s, [pending[0]], cursor);
+    keys.push(key);
+    const receipt = await plantOnce(store, key, { content: pending[0].content });
+    await plantOnce(store, key, { content: pending[0].content }); // retry, not another update
+    cursor = checkpointWindow(cursor, s, s, pending, [receipt], NOW);
+    assert.equal(windowKey("test", s, [pending[0]], cursor), key);
+    cursor = completeSession(cursor, s, s, { eventsComplete: true, now: NOW });
+    assert.equal(storedContent, s.messages[0].content);
+  }
+  assert.equal(writes, 3);
+  assert.equal(new Set(keys).size, 3);
+  assert.equal(cursor.collectorV2.sources.pi.sessions.newest.messageKeys.length, 4);
+  assert.equal(pendingMessages(cursor, original).length, 0);
 });

@@ -1,6 +1,6 @@
 // Pure cursor transitions; callers persist/read back through their memory store.
 // Legacy fields are never rewritten, compacted, or treated as a traversal fence.
-import { hash, messageKey, newestFirst } from "./common.mjs";
+import { hash, messageKey, messageIdentity, newestFirst } from "./common.mjs";
 
 const source = (cursor, tool) => (cursor.sources ?? cursor)[tool] ?? {};
 const state = (cursor, s) => cursor.collectorV2?.sources?.[s.tool]?.sessions?.[s.id];
@@ -92,9 +92,15 @@ export function pendingMessages(cursor, s) {
   if (legacy?.status === "processed" && legacy.cutoff === null) throw Error("legacy provenance reconciliation required");
   // Use the legacy time boundary only until a stable read establishes prefix
   // fingerprints. After that, even same-timestamp edits must be reconsidered.
-  return s.messages.filter((m) => !done.has(messageKey(m))
+  return s.messages.filter((m) => !(current?.messageVersions
+    ? current.messageVersions[messageIdentity(m)] === messageKey(m) : done.has(messageKey(m)))
     && !(legacy?.status === "processed" && !current?.legacyBaseline
       && Date.parse(m.timestamp) <= legacy.cutoff));
+}
+
+function generation(cursor, s) {
+  const previous = state(cursor, s);
+  return (previous?.generation ?? 0) + (previous && previous.revision !== s.revision ? 1 : 0);
 }
 
 function acknowledgedProgress(cursor, s) {
@@ -102,14 +108,21 @@ function acknowledgedProgress(cursor, s) {
   const legacy = legacyRecord(cursor, s);
   const establishBaseline = !previous.legacyBaseline && legacy?.status === "processed"
     && legacy.cutoff !== null && Array.isArray(s.messages);
-  const prefixKeys = establishBaseline
-    ? s.messages.filter((m) => Date.parse(m.timestamp) <= legacy.cutoff).map(messageKey) : [];
-  return { messageKeys: [...new Set([...(previous.messageKeys ?? []), ...prefixKeys])],
+  const messageVersions = { ...previous.messageVersions };
+  const oldKeys = new Set(previous.messageKeys ?? []);
+  for (const m of s.messages ?? []) {
+    if ((!previous.messageVersions && oldKeys.has(messageKey(m)))
+      || (establishBaseline && Date.parse(m.timestamp) <= legacy.cutoff)) {
+      messageVersions[messageIdentity(m)] = messageKey(m);
+    }
+  }
+  return { messageVersions, messageKeys: Object.values(messageVersions), generation: generation(cursor, s),
     ...(previous.legacyBaseline || establishBaseline ? { legacyBaseline: true } : {}) };
 }
 
-export function windowKey(host, s, messages, pipeline = "window") {
-  return hash([host, s.tool, s.id, pipeline, messages.map(messageKey)]);
+export function windowKey(host, s, messages, cursor, pipeline = "window") {
+  if (!cursor) throw Error("cursor is required to distinguish a restoration from a retry");
+  return hash([host, s.tool, s.id, generation(cursor, s), pipeline, messages.map(messageKey)]);
 }
 
 export function checkpointWindow(cursor, before, after, messages, receipts, now = Date.now()) {
@@ -119,9 +132,10 @@ export function checkpointWindow(cursor, before, after, messages, receipts, now 
   if (!Array.isArray(receipts)) throw Error("verified receipt list required (empty for empty extraction)");
   const previous = state(cursor, before) ?? {};
   const progress = acknowledgedProgress(cursor, before);
+  for (const m of messages) progress.messageVersions[messageIdentity(m)] = messageKey(m);
   return update(cursor, before, { ...progress, status: "partial", revision: before.revision,
     lastMessageAt: before.lastMessageAt,
-    messageKeys: [...new Set([...progress.messageKeys, ...messages.map(messageKey)])],
+    messageKeys: Object.values(progress.messageVersions),
     receipts: [...(previous.receipts ?? []), ...receipts] });
 }
 

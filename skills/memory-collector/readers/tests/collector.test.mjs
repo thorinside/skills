@@ -109,7 +109,7 @@ test("partial failure stays unresolved; only acknowledged windows resume; no dup
     write: async (key, record) => { writes++; store.set(key, { id: "receipt-1", record });
       if (loseReply) { loseReply = false; throw Error("lost response after write"); } return "receipt-1"; },
     verify: async (id, key) => assert.equal(store.get(key)?.id, id) };
-  const window = s.messages.slice(0, 2), key = windowKey("test", s, window);
+  const window = s.messages.slice(0, 2), key = windowKey("test", s, window, {});
   await assert.rejects(plantOnce(adapter, key, { source: "pi:test:newest" }), /lost response/);
   const receipt = await plantOnce(adapter, key, { source: "pi:test:newest" });
   assert.equal(writes, 1);

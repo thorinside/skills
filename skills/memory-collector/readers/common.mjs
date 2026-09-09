@@ -5,6 +5,7 @@ import { pathToFileURL } from "node:url";
 
 export const hash = (value) => createHash("sha256").update(JSON.stringify(value)).digest("hex");
 export const messageKey = (m) => hash([m.id, m.role, m.timestamp, m.content]);
+export const messageIdentity = (m) => hash([m.id, m.role]);
 export const isMain = (url) => process.argv[1] && pathToFileURL(process.argv[1]).href === url;
 const compareText = (a, b) => a < b ? -1 : a > b ? 1 : 0;
 export const newestFirst = (a, b) => Date.parse(b.lastMessageAt) - Date.parse(a.lastMessageAt)

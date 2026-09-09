@@ -116,9 +116,18 @@ State compatibility:
 - Preserve **all** legacy fields, timestamps, stored references and unknown
   sources. Do not rewrite production cursors just to migrate. New transitions
   add only `collectorV2: {version:2,policy:"newest-first",sources:{<tool>:{
-  sessions:{<id>:{status,revision,lastMessageAt,resolvedAt,messageKeys,receipts,legacyBaseline}}}}}`.
+  sessions:{<id>:{status,revision,generation,lastMessageAt,resolvedAt,messageKeys,
+  messageVersions,receipts,legacyBaseline}}}}}`.
 - Sidecar revision equality resolves processed/trivial entries; changed revisions
-  reopen them. `partial` entries retain completed-message hashes and receipt IDs.
+  reopen them. `partial` entries retain current acknowledged fingerprints by
+  message identity (`messageVersions`, with `messageKeys` as its current values)
+  separately from historical receipt IDs. Edits replace the current fingerprint,
+  not accumulate an ever-growing skip set: A→B→A is new correction work.
+  `windowKey(host,session,messages,cursor,pipeline?)` includes a revision generation,
+  stable within a revision across checkpoints/retries and advanced on change.
+  Persist/reuse keys with the plan; new keys still update matched existing items,
+  not automatically new entities. Reconcile old pending plans before completion,
+  including when a source changed during an uncertain write.
   Never mark an entire session complete until every pending message and event
   scan is done. Live/changed sources fail checkpoint validation.
 - Legacy timestamp-only records remain respected: lastMessageAt, otherwise
