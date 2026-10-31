@@ -13,7 +13,7 @@
   informed the standalone package. The application's pubspec/lock were not copied.
 
 The exact copied bytes are retained in destination snapshot commit
-`404e77ec91c085a486588b96b3765a55d2171a8f`
+`b0b4afe202542d788ea67b2b9b7468551ddfed14`
 (`chore(test-quality-review): snapshot in-progress nt_helper audit source`).
 Use the full commit ID in the local Git history to retrieve original
 `skills/test-quality-review/scripts/...` files; `source.json` verifies their hashes.
@@ -79,6 +79,15 @@ At initial packaging the adapter depended on a particular local service. The
 portability follow-up removed that dependency: current usage takes explicit
 caller-selected MCP server/service/provider/model settings. Historical source
 identities above are provenance only, not reusable defaults or prerequisites.
+
+For the review PR, the feature commits were replayed onto `origin/main` on
+`feat/test-quality-review-pr`, excluding the unrelated memory-skill migration.
+The original feature branch and canonical checkout's in-progress rebase were
+preserved. The snapshot commit above is the replayed equivalent of the original
+`404e77ec91c085a486588b96b3765a55d2171a8f`; all recorded source hashes still match.
+The review fixes add artifact/cache symlink containment, private staging writes,
+and reporting independent of deletion plans. Current validation is recorded in
+[the portability follow-up](PORTABILITY.md).
+
 The tool supports Dart AST declarations only, not exhaustive runtime inventory;
-external helpers, chopped setup, custom wrappers and unsupported removal-plan
-shapes may require manual review. See the adapter README for operational details.
+external helpers, chopped setup and custom wrappers may require manual review. See the adapter README for operational details.

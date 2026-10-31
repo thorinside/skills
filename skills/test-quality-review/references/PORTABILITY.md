@@ -50,5 +50,5 @@ project names, local absolute paths, infrastructure names or model/provider
 defaults in the reusable instructions/scripts; historical identifiers are isolated
 in provenance.
 
-No source application changes or pushes were made. No live classifier inference
-was performed; compatibility with a caller's service remains a runtime check.
+No source application changes or live classifier inference were performed;
+compatibility with a caller's service remains a runtime check.
