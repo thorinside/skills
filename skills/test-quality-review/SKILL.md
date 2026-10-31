@@ -15,8 +15,9 @@ directory when omitted; never from this skill's installation directory. A single
 global installation serves multiple repositories without copying it into each.
 Read the target project's local instructions and confirm repository identity,
 working-tree status, requested change, and exact test selection. Preserve other agents' work.
-Ask before expanding coverage beyond the requested change. Default to the tests
-associated with that change, not a repository-wide audit.
+Ask before expanding coverage beyond the requested change. Default to one test
+file at a time during development, selected by the caller; broader review is
+opt-in, not a repository-wide audit.
 
 For each test, identify the requirement or distinct regression it claims to protect,
 its setup, observable assertions, and relevant existing coverage. A title is a claim,
@@ -24,8 +25,11 @@ not evidence. Record missing helpers or contract information as unresolved.
 
 ## 2. Inspect and classify
 
-Read the selected tests. Apply the categorical rubric in
+First pass: classify each selected test as keep, tighten, or removal candidate,
+with a concise source-grounded reason (or unresolved when evidence is missing).
+Use the disposition rubric in
 [`scripts/tool/test_quality_audit/questions.json`](scripts/tool/test_quality_audit/questions.json).
+The separate explanatory second pass is optional; it is not a first-pass prerequisite.
 
 - **Keep:** assertions detect a distinct supported behavioral failure.
 - **Tighten:** the current scenario has distinct value but weak assertions,
@@ -71,10 +75,18 @@ server entry, service, expected provider and model explicitly. Use only authoriz
 settings; there is no default infrastructure, model, credentials or fallback. If unavailable or incompatible, report the limitation and continue
 manual review. Never claim inference ran when it did not.
 
+For the default single-file first pass, build/run with `--verdict-only`.
+Only when requested, follow flagged tighten/removal candidates with the existing
+full categorical questions (`protection`, `weakness`, `contextAdequate`) to explain
+why and inform actionable tightening or retained-coverage checks. The adapter
+README documents removal verification and selected-test full review separately;
+keep the first-pass results. These labels supplement the agent's grounded reasons,
+not generated explanations or deletion authority.
+
 Use bounded `--limit` batches. Treat failed calls, missing context, stale hashes,
 unsupported declarations and malformed responses as unresolved. Scores are
-uncalibrated, not correctness probabilities. Screening does not replace full
-categorical verification or manual review. Preserve packets/results privately:
+uncalibrated, not correctness probabilities. Screening supports the initial advisory
+judgment; any later cleanup still requires manual retained-coverage review. Preserve packets/results privately:
 they contain source. The tool's network deadlines are operational limits, not
 permission to use real-time waits in tests.
 

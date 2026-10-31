@@ -17,11 +17,11 @@ SKILL=/absolute/path/to/skills/test-quality-review
 (cd "$SKILL/scripts" && dart pub get)
 cd /absolute/path/to/project
 
-# Build and inspect packets without contacting a classifier.
+# Default first pass: one test file, disposition only; no classifier contact.
 dart --packages="$SKILL/scripts/.dart_tool/package_config.json" \
   "$SKILL/scripts/tool/test_quality_audit.dart" build \
   --file test/example_test.dart --out .dart_tool/quality-review \
-  --model "$CLASSIFIER_MODEL"
+  --verdict-only --model "$CLASSIFIER_MODEL"
 
 # Optional bounded inference, using caller-authorized MCP configuration.
 dart --packages="$SKILL/scripts/.dart_tool/package_config.json" \
@@ -104,11 +104,23 @@ service failures stop new work; already in-flight calls may finish. Failed rows
 can retry on a later invocation; no in-run polling/retry loop. Valid inadequate-
 context replies are cached rather than repeatedly classified.
 
-For screening, add `--verdict-only` to a build/run selection, then use
-`run --verify-removals` on the same output directory **without `--file`** to expand
-screened remove rows into the four-question review. Original replies are archived
-in `screen-results/`. Keep/tighten screens still require manual review. Screening
-and full categorical results are both advisory.
+The default development workflow is a single-file first pass: build/run with
+`--verdict-only` to classify keep/tighten/removal candidates. Give concise grounded
+reasons manually; do not require the explanatory questions in this pass. The CLI
+retains its existing full-question mode when `--verdict-only` is omitted.
+
+Optional second pass, only when requested: use the existing four-question review
+(disposition, protection, weakness, contextAdequate) for flagged tightening/removal
+recommendations. For screened removals, use `run --verify-removals` on the same
+output directory **without `--file`**; original replies are archived in
+`screen-results/`. This flag selects removals only, not tighten rows. For flagged
+tighten tests, build/run the original `--file` with existing `--name` filters in a
+separate target-local output directory, omitting `--verdict-only`; inspect the
+selection because filters are title substrings. This preserves the initial pass.
+Use protection/weakness labels and source evidence to explain why the test was
+flagged and what to tighten or compare before considering removal. Labels are not
+generated explanations. Both passes are advisory and require manual review;
+the second pass is never a prerequisite for the initial classification.
 
 ## Reports and limitations
 
