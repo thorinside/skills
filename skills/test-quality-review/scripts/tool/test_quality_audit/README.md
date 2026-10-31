@@ -1,122 +1,116 @@
-# Test quality audit
+# Dart classifier adapter (review-only)
 
-Send **only the test file, the indicated test, and the criteria** to Substrate's
-registered local `classifier` (`vllmDecision`, `qwen3.8-sw`). No production-source
-expansion, generated reasons, paid inference, commits, pushes, or merges.
-Dry run is the default.
+Adapted from nt_helper's in-progress audit. Extracts `test`, `testWidgets`, and
+`blocTest` AST declarations without executing tests, preserves complete targets,
+budgets requests, resumes hash-bound responses, and writes categorical reports.
+No target source is modified. `--apply-removals` is rejected, including through
+`writeReport`. `proposed-removals.json` is an evidence archive, not an approval.
 
-```sh
-dart run tool/test_quality_audit.dart run \
-  --file test/util/parameter_write_debouncer_test.dart \
-  --mcp-config "$HOME/.pi/agent/mcp.json" \
-  --out .dart_tool/debouncer-quality \
-  --dry-run
-```
+## Setup and invocation
 
-Repeat `--file` or `--name` to select exact test files or title substrings (OR).
-There is no implicit repository-wide run. `--limit N` caps new classifier calls;
-unclassified rows remain unresolved. Repeating the command resumes cached,
-hash-matched results, including valid context-inadequate answers. Failed calls
-can retry on the next invocation; there is no in-run retry/polling loop.
-
-## 32K context ceiling
-
-`--max-tokens` defaults to **32768** and cannot exceed it. Budgeting counts the
-**entire request, including all criteria**, leaving 2048 tokens of native prompt
-and output headroom. With `uv` installed, `budget.py` uses the larger of tiktoken's
-cl100k_base/o200k_base estimates; these are **not the exact Qwen tokenizer**.
-Without uv it uses Python, falling back to a conservative UTF-8 byte upper bound
-if tiktoken is unavailable. Provider context/resource limits remain authoritative;
-rejected calls are unresolved rather than silently accepted or retried forever.
-
-Oversized files are chopped at a line boundary. The indicated test's complete
-AST-extracted source, original range, title and enclosing loop bindings are kept
-separately, even if that test is outside the included file prefix. Included lines
-and omissions are explicit in every packet. If the indicated test plus criteria
-alone exceed the budget, the row is blocked; its body is never silently cut.
-Complete original test files remain archived in `manifest.json`.
-
-Shared test-file text precedes the varying target, allowing prefix reuse where
-the provider supports it. `--concurrency` bounds warm requests (default 1, maximum
-8); the first actual call is serial and gets **120 seconds** for model loading.
-Subsequent calls get **30 seconds**. Override with `--cold-timeout` and `--timeout`.
-The MCP transport allows ten additional seconds to receive the bounded reply.
-
-## Screening a full suite
-
-Use `--verdict-only` for a first pass asking only keep/remove/tighten. These
-rows are marked `screenOnly` and cannot authorize source deletion. Then run the
-same output directory with `--verify-removals` to request all four categories
-for screened remove candidates. The original screen replies are archived under
-`screen-results/`; valid richer replies already present are reused. Neither
-phase generates written reasons. Keep/tighten samples still need source review.
-
-Warm concurrency is bounded, and three consecutive service/transport failures
-stop a batch (allowing already in-flight calls to finish). Failed calls remain
-unresolved. For long audits, use bounded `--limit` batches with fresh MCP
-connections rather than turning a lost socket into thousands of bogus verdicts.
-
-## Labels and review
-
-Four questions produce categories, not written explanations:
-
-- **Disposition:** `keep`, `remove`, `tighten`.
-- **Protection:** documented regression, edge case, error handling, contract,
-  accessibility/layout, smoke-only, unclear.
-- **Weakness:** none, implementation coupling, vacuous assertion, proven
-  redundant coverage, unrealistic setup, excessive synchronization, missing
-  assertions, insufficient context.
-- **Context adequate:** boolean score, based on the supplied test file—not a
-  demand for production code or historical issue links.
-
-Reports expose the model's raw choice and the effective verdict. Insufficient
-context, malformed/failed calls, stale requests/source, or an unexpected model
-or provider are **unresolved**, never applicable removals. A `remove` verdict
-paired with `weakness: none` is separately flagged as contradictory and blocks
-bulk application until source review; the raw model choice remains visible.
-Scores are raw,
-**uncalibrated** outputs, not measured correctness probabilities. Specific wire
-bytes, call ordering, rare errors, races, accessibility and geometry can protect
-real contracts; specificity alone does not justify deletion.
-
-Dart analyzer ASTs identify `test`, `testWidgets`, and `blocTest` declarations
-without running tests. Parameterized declarations cover all enclosing variants;
-variants are not expanded. Custom registration wrappers are not inventoried.
-Chopped setup or external test helpers can require manual review. A full audit
-report must distinguish extracted declarations, classified rows, and unresolved
-or unsupported coverage; it is not automatically an exhaustive runtime inventory.
-
-## Build, inspect, apply
+Requires Dart >=3.11 <4, Python 3, and packages resolved in this skill's `scripts/`
+directory. Flutter is not required. This package does not change the reviewed
+project's dependencies. Set `SKILL` to the absolute installed skill directory:
 
 ```sh
-# Build/budget packets without inference.
-dart run tool/test_quality_audit.dart build \
-  --file test/util/parameter_write_debouncer_test.dart \
-  --out .dart_tool/debouncer-quality
+SKILL=/absolute/path/to/skills/test-quality-review
+(cd "$SKILL/scripts" && dart pub get)
+cd /absolute/path/to/project
 
-# Regenerate a dry-run report from saved responses.
-dart run tool/test_quality_audit.dart report --out .dart_tool/debouncer-quality
+# Build and inspect packets without contacting Substrate.
+dart --packages="$SKILL/scripts/.dart_tool/package_config.json" \
+  "$SKILL/scripts/tool/test_quality_audit.dart" build \
+  --file test/example_test.dart --out .dart_tool/quality-review
 
-# Explicitly apply effective remove verdicts.
-dart run tool/test_quality_audit.dart report \
-  --out .dart_tool/debouncer-quality --apply-removals
+# Optional bounded local inference, using existing authorized MCP configuration.
+dart --packages="$SKILL/scripts/.dart_tool/package_config.json" \
+  "$SKILL/scripts/tool/test_quality_audit.dart" run \
+  --out .dart_tool/quality-review \
+  --mcp-config /absolute/path/to/mcp.json --limit 5 --dry-run
+
+# Regenerate reports from saved results without inference.
+dart --packages="$SKILL/scripts/.dart_tool/package_config.json" \
+  "$SKILL/scripts/tool/test_quality_audit.dart" report \
+  --out .dart_tool/quality-review
 ```
 
-`--dry-run` and `--apply-removals` are mutually exclusive. Apply preserves deleted
-bodies in `proposed-removals.json` before writing source. Only
-`test/**/*_test.dart` can be targets; hashes and ranges must still match.
-Unbraced/embedded registrations and overlapping edits are refused. If every
-supported test in a file is removed, the empty test file is deleted; review that
-whole-file deletion for shared helpers/custom wrappers. Other verdicts are not
-rewritten. Review `git diff`, format affected files, run relevant tests and
-`flutter analyze --no-pub`; unused test scaffolding may need focused cleanup.
+The **current directory is the reviewed repository**; dependencies and prompts
+resolve from the absolute skill path. Repeat `--file` for exact files under
+`test/**/*_test.dart`; repeat `--name` for title-substring filters (OR). There is no
+implicit whole-suite selection. `run` can build first when supplied `--file`, or
+resume an existing manifest without it. Use a separate output directory for a new
+selection; inspect source/hash warnings after changes.
 
-`--mcp-config` selects an existing HTTP MCP JSON entry named `substrate` (override
-with `--server`). Its URL and optional headers contact only the Substrate control
-plane; `${ENV_VARIABLE}` header values are expanded. Credentials/configuration
-are not stored in audit artifacts. The tool verifies the provisioned local
-provider/model before inference; it does not contact classifier endpoints directly.
+## Packets, context and limits
 
-Outputs under `--out`: `manifest.json`, `results/*.json`, `report.md`,
-`report.json`, and `proposed-removals.json`. The default `.dart_tool/` location is
-gitignored. These artifacts contain repository source; keep them private.
+Only the test file, selected target and criteria are sent; production imports are
+not expanded. Original files remain in `manifest.json`. AST ranges, group titles
+and enclosing loop bindings identify the target. Parameterized registrations are
+not expanded, and custom wrappers are unsupported. Missing external test helpers
+can make a row unresolved; inspect actual packets rather than guessing.
+
+`--max-tokens` defaults to 32768 and cannot exceed it. The complete request,
+including criteria, reserves 2048 tokens for native framing/output. With `uv`, the
+budgeter uses tiktoken's larger cl100k_base/o200k_base estimate; these are not the
+exact Qwen tokenizer. Without uv it uses Python and, if tiktoken is unavailable,
+a conservative UTF-8 byte estimate. Initial uv/tiktoken resolution may require
+network access. Provider limits remain authoritative.
+
+Oversized file text is shortened at line boundaries; the complete indicated target
+and loop bindings remain separate. Included lines and omissions are explicit. If
+the target plus criteria cannot fit, the row is blocked rather than truncated.
+`--max-bytes` is the upstream pre-budget byte guard; token budgeting recomputes the
+blocked state, so do not treat it as an independent final request-size guarantee.
+
+## Substrate integration
+
+Before `run`, inspect live `get_service`, `get_tool` and `create_classification`
+schemas through Substrate and confirm compatibility. The current adapter uses
+`get_service(name: classifier)` and `create_classification(service: classifier,
+request: ..., timeoutMs: ...)`. It requires enabled local `vllmDecision/qwen3.8-sw`
+and validates response provider/model. No paid fallback or direct model endpoint.
+Service drift is an integration limitation, not permission to change shared config.
+
+`--mcp-config` reads an existing HTTP MCP JSON entry named `substrate` under
+`mcpServers`; `--server` changes the entry name. Optional header values expand
+`${ENV_VARIABLE}`. Configuration and credentials are not copied into artifacts.
+
+Default concurrency is 1 (maximum 8). The first call gets 120 seconds for cold
+loading and subsequent calls 30 seconds; `--cold-timeout`/`--timeout` override
+these operational deadlines. The transport adds 10 seconds. Three consecutive
+service failures stop new work; already in-flight calls may finish. Failed rows
+can retry on a later invocation; no in-run polling/retry loop. Valid inadequate-
+context replies are cached rather than repeatedly classified.
+
+For screening, add `--verdict-only` to a build/run selection, then use
+`run --verify-removals` on the same output directory **without `--file`** to expand
+screened remove rows into the four-question review. Original replies are archived
+in `screen-results/`. Keep/tighten screens still require manual review. Screening
+and full categorical results are both advisory.
+
+## Reports and limitations
+
+Outputs: `manifest.json`, `results/*.json`, `report.md`, `report.json`,
+`proposed-removals.json`, and optionally `screen-results/`. Reports contain raw
+choice, effective verdict, protection, weakness, uncalibrated scores, status and
+contradiction flags. Insufficient context, stale source/request hashes, missing or
+malformed replies and unexpected model/provider remain unresolved. The model does
+not generate reasons; the invoking agent must explain findings from source.
+
+The retained upstream proposal planner can reject embedded/unbraced or overlapping
+remove candidates even in report-only mode. Inspect saved rows manually if that
+happens; it does not establish a successful report or authorize editing. Upstream
+is unfinished, classifier precision/calibration are unestablished, and no live
+inference was exercised while packaging this skill.
+
+Keep artifacts private and use the project's approved artifact location. Do not
+store them in this installed skill. Local validation for this package (not the
+reviewed project's suite):
+
+```sh
+(cd "$SKILL/scripts" && dart analyze && dart test test/tool/test_quality_audit_test.dart)
+(cd "$SKILL/scripts/tool/test_quality_audit" && python3 -B -m unittest test_budget.py)
+```
+
+The tests are ported upstream coverage; time/deadline checks use injected callbacks
+and completers, not sleeps or bounded real-time waits.

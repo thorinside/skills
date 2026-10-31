@@ -67,7 +67,7 @@ Future<void> main(List<String> arguments) async {
     ..addFlag(
       'apply-removals',
       negatable: false,
-      help: 'Apply valid remove verdicts; archive original source first.',
+      help: 'Unsupported: this skill is review-only and never edits tests.',
     )
     ..addFlag('help', abbr: 'h', negatable: false);
   try {
@@ -75,7 +75,7 @@ Future<void> main(List<String> arguments) async {
         arguments.contains('--help') ||
         arguments.contains('-h')) {
       stdout.writeln(
-        'dart run tool/test_quality_audit.dart build|run|report [options]\n${parser.usage}',
+        'dart tool/test_quality_audit.dart build|run|report [options]\n${parser.usage}',
       );
       return;
     }
@@ -87,9 +87,9 @@ Future<void> main(List<String> arguments) async {
     if (options.flag('verdict-only') && options.flag('verify-removals')) {
       throw const FormatException('Choose screening or verification, not both');
     }
-    if (options.flag('dry-run') && options.flag('apply-removals')) {
+    if (options.flag('apply-removals')) {
       throw const FormatException(
-        'Choose --dry-run or --apply-removals, not both',
+        'This skill is review-only; classifier labels never authorize test deletion',
       );
     }
     int positive(String key) {
@@ -247,10 +247,7 @@ Future<void> main(List<String> arguments) async {
         );
       }
       final client = McpClient(
-        const Implementation(
-          name: 'nt-helper-test-quality-audit',
-          version: '1.0.0',
-        ),
+        const Implementation(name: 'test-quality-review', version: '1.0.0'),
         options: const McpClientOptions(protocol: McpProtocol.legacy),
       );
       final transport = StreamableHttpClientTransport(

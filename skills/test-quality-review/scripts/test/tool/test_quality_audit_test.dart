@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:flutter_test/flutter_test.dart';
+import 'package:test/test.dart';
 import 'package:path/path.dart' as p;
 
 import '../../tool/test_quality_audit.dart' show validateLocalService;
@@ -414,33 +414,42 @@ void main() {
   );
 
   test(
-    'explicit apply deletes only the classified statement and preserves siblings',
+    'review-only requirement: even an explicit apply preserves the classified test and siblings',
     () {
       saveDecision(1, 'remove');
-      writeReport(manifest, output, applyRemovals: true);
+      // Upstream deletion coverage did not protect this skill's read-only boundary.
+      expect(
+        () => writeReport(manifest, output, applyRemovals: true),
+        throwsFormatException,
+      );
       final updated = File(
         p.join(root.path, 'test/example_test.dart'),
       ).readAsStringSync();
       final remaining = extractTests('test/example_test.dart', updated);
-      expect(remaining, hasLength(2));
+      expect(remaining, hasLength(3));
       expect(updated, contains('setUp(() => prepare())'));
       expect(updated, contains("test('contract"));
       expect(updated, contains("blocTest<Object, Object>('errors'"));
-      expect(updated, isNot(contains("testWidgets('vacuous'")));
+      expect(updated, fixture);
     },
   );
 
   test(
-    'all-remove verdicts archive bodies before deleting the empty test file',
+    'review-only regression: unanimous remove labels still cannot delete a test file',
     () {
       for (var index = 0; index < 3; index++) {
         saveDecision(index, 'remove');
       }
-      writeReport(manifest, output, applyRemovals: true);
+      // Single-candidate refusal alone does not protect whole-file removal paths.
       expect(
-        File(p.join(root.path, 'test/example_test.dart')).existsSync(),
-        isFalse,
+        () => writeReport(manifest, output, applyRemovals: true),
+        throwsFormatException,
       );
+      expect(
+        File(p.join(root.path, 'test/example_test.dart')).readAsStringSync(),
+        fixture,
+      );
+      writeReport(manifest, output);
       expect(
         (jsonDecode(
               File(

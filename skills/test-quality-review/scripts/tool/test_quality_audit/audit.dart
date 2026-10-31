@@ -310,21 +310,12 @@ void writeReport(
   Directory output, {
   bool applyRemovals = false,
 }) {
+  if (applyRemovals) {
+    throw const FormatException(
+      'This skill is review-only; classifier labels never authorize test deletion',
+    );
+  }
   final results = auditResults(manifest, output);
-  if (applyRemovals &&
-      results.any(
-        (row) => row['verdict'] == 'remove' && row['screenOnly'] == true,
-      )) {
-    throw const FormatException(
-      'Verdict-only remove candidates need full categorical verification before applying',
-    );
-  }
-  if (applyRemovals &&
-      results.any((row) => (row['reviewFlags'] as List? ?? []).isNotEmpty)) {
-    throw const FormatException(
-      'Contradictory classifier labels require source review before removals can be applied',
-    );
-  }
   final plan = removalPlan(manifest, results);
   final removed = (manifest['tests'] as List)
       .where(
@@ -337,29 +328,16 @@ void writeReport(
     'tests': removed,
     'files': plan.keys.toList(),
   });
-  // The manifest also preserves complete original files; write the proposal
-  // archive before applying any removal. Dry run never writes source files.
-  if (applyRemovals) {
-    for (final entry in plan.entries) {
-      final file = File(checkedTestPath(manifest['root'] as String, entry.key));
-      if (extractTests(entry.key, entry.value).isEmpty) {
-        file.deleteSync();
-        continue;
-      }
-      final temporary = File('${file.path}.audit-tmp');
-      temporary.writeAsStringSync(entry.value);
-      temporary.renameSync(file.path);
-    }
-  }
+  // Review artifacts only. The skill never writes or deletes target tests.
   saveJson(File(p.join(output.path, 'report.json')), {
-    'mode': applyRemovals ? 'applied' : 'dry-run',
+    'mode': 'dry-run',
     'tests': results,
     'proposedFiles': plan.keys.toList(),
   });
   String cell(Object? value) =>
       (value ?? '—').toString().replaceAll('|', '\\|').replaceAll('\n', ' ');
   final lines = [
-    '# Test quality audit (${applyRemovals ? 'removals applied' : 'dry run'})',
+    '# Test quality audit (dry run)',
     '',
     'Classifier: local qwen3.8-sw via Substrate. Labels only; no generated reasons.',
     'Scores are uncalibrated model output, not measured correctness probabilities.',
@@ -372,7 +350,7 @@ void writeReport(
       '| ${cell(row['title'])} | ${cell(row['file'])}:${row['line']} | ${row['verdict']} | ${cell(row['rawDisposition'])} | ${cell(row['protection'])} | ${cell(row['weakness'])} | ${cell(row['dispositionScore'])} | ${cell(row['status'])} | ${cell((row['reviewFlags'] as List? ?? []).join(', '))} |',
     '',
     'Source snapshots and exact proposed deleted bodies are preserved in manifest.json and proposed-removals.json.',
-    'No commits or merges are performed. Review the diff and verify retained behavior after applying removals.',
+    'Advisory review only: no target tests, commits or merges are changed. Verify each candidate against distinct requirements and retained coverage.',
     '',
   ];
   File(p.join(output.path, 'report.md')).writeAsStringSync(lines.join('\n'));
