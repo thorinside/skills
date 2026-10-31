@@ -1,8 +1,6 @@
 #!/usr/bin/env python3
 """Budget test-file-only requests; preserve the indicated test in full."""
-import argparse
 import json
-from pathlib import Path
 
 
 def token_counter():
@@ -24,7 +22,7 @@ def budget_row(row, count, estimator, max_tokens):
     state = request['input']
     source = state['testFile']
     lines = source.splitlines(keepends=True)
-    # Count all four questions/criteria and metadata, leaving native prompt
+    # Count the selected questions/criteria and metadata, leaving native prompt
     # framing/output headroom. Provider limits remain authoritative.
     budget = max_tokens - 2048
     state['budget'] = {'contextLimit': max_tokens, 'requestBudget': budget,
@@ -59,29 +57,3 @@ def budget_row(row, count, estimator, max_tokens):
     row['estimatedRequestTokens'] = count(request)
     row['chopped'] = bool(state['omissions'])
     return row
-
-
-def main():
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('input', type=Path)
-    parser.add_argument('output', type=Path)
-    parser.add_argument('--max-tokens', type=int, default=32768)
-    args = parser.parse_args()
-    if args.max_tokens <= 2048 or args.max_tokens > 32768:
-        parser.error('--max-tokens must be greater than 2048 and at most 32768')
-    manifest = json.loads(args.input.read_text())
-    count, estimator = token_counter()
-    for row in manifest['tests']:
-        budget_row(row, count, estimator, args.max_tokens)
-    manifest['contextLimit'] = args.max_tokens
-    manifest['estimator'] = estimator
-    args.output.write_text(json.dumps(manifest, ensure_ascii=False, separators=(',', ':')))
-    rows = manifest['tests']
-    print(json.dumps({'tests': len(rows), 'blocked': sum(bool(row['blocked']) for row in rows),
-                      'chopped': sum(row['chopped'] for row in rows), 'contextLimit': args.max_tokens,
-                      'maxEstimatedRequestTokens': max(row['estimatedRequestTokens'] for row in rows),
-                      'estimator': estimator}))
-
-
-if __name__ == '__main__':
-    main()
