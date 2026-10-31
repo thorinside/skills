@@ -1,0 +1,58 @@
+{
+  "repository": "git@github.com:No-Such-Device/nt_helper.git",
+  "path": "/Users/nealsanche/nosuch/nt_helper",
+  "branch": "feat/test-quality-audit",
+  "head": "ef82eb450426dd0b102469db0394acc48125e142",
+  "capturedAt": "2026-10-31T18:03:41.986139+00:00",
+  "status": "M pubspec.lock\n M pubspec.yaml\n?? test/tool/test_quality_audit_test.dart\n?? tool/test_quality_audit.dart\n?? tool/test_quality_audit/",
+  "files": [
+    {
+      "source": "tool/test_quality_audit.dart",
+      "snapshot": "scripts/tool/test_quality_audit.dart",
+      "sha256": "fa14d04d05a0267f594c502544e2f2ce7d066d1bc9417b9acb408d6781f3c987",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/README.md",
+      "snapshot": "scripts/tool/test_quality_audit/README.md",
+      "sha256": "1801a3a167c0cfd849029491d64b0e10b2e89486aa1ea6495d8c8be570307c20",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/audit.dart",
+      "snapshot": "scripts/tool/test_quality_audit/audit.dart",
+      "sha256": "90685cf7036663d701b43b147db9abaec283898b8d1c832b76107681c31c3f6b",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/budget.py",
+      "snapshot": "scripts/tool/test_quality_audit/budget.py",
+      "sha256": "d725804ec516a13feab6538d13d2f418b64126f9d12f2a2d8b932797a53698f0",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/extractor.dart",
+      "snapshot": "scripts/tool/test_quality_audit/extractor.dart",
+      "sha256": "edee3ee2bec6c8b536deb31fd93a642b09fb96c9e1c42988df35f0c982d39755",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/questions.json",
+      "snapshot": "scripts/tool/test_quality_audit/questions.json",
+      "sha256": "d5125fd24e3e3c654d21bba06418c01656c2e8f53f71b33cab57cc11a8485f8c",
+      "uncommitted": true
+    },
+    {
+      "source": "tool/test_quality_audit/test_budget.py",
+      "snapshot": "scripts/tool/test_quality_audit/test_budget.py",
+      "sha256": "4663b2db8333da696edd09eaf54fd27655b0ae6c2ab5c785305c60577b5a456c",
+      "uncommitted": true
+    },
+    {
+      "source": "test/tool/test_quality_audit_test.dart",
+      "snapshot": "scripts/test/tool/test_quality_audit_test.dart",
+      "sha256": "086556c3c70cf9212af96fdb287055ca5753eed67ed1a11df9597bfa0370e2d7",
+      "uncommitted": true
+    }
+  ]
+}
