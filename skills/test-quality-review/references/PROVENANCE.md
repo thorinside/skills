@@ -73,9 +73,10 @@ Packaging checks passed:
 No nt_helper tests were modified, deleted, or executed. No full project suite or
 live classifier inference was run. Upstream work remains unfinished; classification
 precision/calibration and current service integration are not established here.
-The adapter depends on a compatible enabled Substrate local
-`vllmDecision/qwen3.8-sw` service and existing authorized HTTP MCP configuration.
-If those are absent/drifted, use manual review and report the inference limitation.
+At initial packaging the adapter depended on a particular local service. The
+portability follow-up removed that dependency: current usage takes explicit
+caller-selected MCP server/service/provider/model settings. Historical source
+identities above are provenance only, not reusable defaults or prerequisites.
 The tool supports Dart AST declarations only, not exhaustive runtime inventory;
 external helpers, chopped setup, custom wrappers and unsupported removal-plan
 shapes may require manual review. See the adapter README for operational details.

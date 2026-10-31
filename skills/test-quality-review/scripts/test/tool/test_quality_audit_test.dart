@@ -5,7 +5,7 @@ import 'dart:io';
 import 'package:test/test.dart';
 import 'package:path/path.dart' as p;
 
-import '../../tool/test_quality_audit.dart' show validateLocalService;
+import '../../tool/test_quality_audit.dart' show validateClassifierService;
 import '../../tool/test_quality_audit/audit.dart';
 import '../../tool/test_quality_audit/extractor.dart';
 
@@ -69,8 +69,8 @@ void main() {
     return {
       'success': true,
       'data': {
-        'model': 'qwen3.8-sw',
-        'provider': 'vllmDecision',
+        'model': 'fixture-model',
+        'provider': 'fixture-provider',
         'answers': {
           for (final entry in selections.entries)
             entry.key: {
@@ -492,35 +492,72 @@ void main() {
     expect(() => checkedPath(root.path, 'test/link.dart'), throwsA(anything));
   });
 
+  // Existing cache tests bind request hashes only; caller-selected classifier
+  // identity must also prevent reusing a result from another service.
   test(
-    'inference refuses a paid or mismatched service instead of falling back',
+    'configured classifier identity isolates cached review judgments',
+    () async {
+      final row = (manifest['tests'] as List).first as Map<String, dynamic>;
+      row['expectedClassifier'] = {
+        'service': 'fixture-service',
+        'provider': 'fixture-provider',
+        'model': 'fixture-model',
+      };
+      await classifyAudit(
+        manifest: manifest,
+        output: output,
+        classify: (_, _) async => response('keep'),
+      );
+      final saved = readResult(output, row['id'] as String)!;
+      expect(verdict(row, saved)['verdict'], 'keep');
+      (row['expectedClassifier'] as Map)['service'] = 'another-service';
+      expect(verdict(row, saved)['verdict'], 'unresolved');
+      (row['expectedClassifier'] as Map)['service'] = 'fixture-service';
+      (row['expectedClassifier'] as Map)['provider'] = 'another-provider';
+      expect(verdict(row, saved)['verdict'], 'unresolved');
+      (row['expectedClassifier'] as Map)['provider'] = 'fixture-provider';
+      (row['expectedClassifier'] as Map)['model'] = 'another-model';
+      expect(verdict(row, saved)['verdict'], 'unresolved');
+    },
+  );
+
+  test(
+    'inference requires the caller-selected provider/model without fallback',
     () {
       expect(
-        () => validateLocalService({
-          'success': true,
-          'data': {
-            'enabled': true,
-            'serviceType': 'classifier',
-            'classifierConfig': {
-              'provider': 'openrouterJev',
-              'model': 'qwen3.8-sw',
+        () => validateClassifierService(
+          {
+            'success': true,
+            'data': {
+              'enabled': true,
+              'serviceType': 'classifier',
+              'classifierConfig': {
+                'provider': 'other-provider',
+                'model': 'fixture-model',
+              },
             },
           },
-        }),
+          provider: 'fixture-provider',
+          model: 'fixture-model',
+        ),
         throwsFormatException,
       );
       expect(
-        () => validateLocalService({
-          'success': true,
-          'data': {
-            'enabled': true,
-            'serviceType': 'classifier',
-            'classifierConfig': {
-              'provider': 'vllmDecision',
-              'model': 'qwen3.8-sw',
+        () => validateClassifierService(
+          {
+            'success': true,
+            'data': {
+              'enabled': true,
+              'serviceType': 'classifier',
+              'classifierConfig': {
+                'provider': 'fixture-provider',
+                'model': 'fixture-model',
+              },
             },
           },
-        }),
+          provider: 'fixture-provider',
+          model: 'fixture-model',
+        ),
         returnsNormally,
       );
     },

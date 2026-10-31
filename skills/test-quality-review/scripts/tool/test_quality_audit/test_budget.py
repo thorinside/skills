@@ -6,7 +6,7 @@ from budget import budget_row, token_counter
 
 class BudgetTests(unittest.TestCase):
     def row(self, source, target="test('last', () { expect(1, 1); });"):
-        return {'request': {'model': 'qwen3.8-sw', 'input': {
+        return {'request': {'model': 'fixture-model', 'input': {
             'testFile': source, 'file': 'test/example_test.dart',
             'includedLines': [1, len(source.splitlines())], 'omissions': [],
             'target': {'source': target, 'line': 999}},

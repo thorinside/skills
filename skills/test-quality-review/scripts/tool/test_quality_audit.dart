@@ -16,6 +16,10 @@ Future<void> main(List<String> arguments) async {
       'name',
       help: 'Only titles containing one of these strings.',
     )
+    ..addOption(
+      'project',
+      help: 'Target repository; defaults to caller working directory.',
+    )
     ..addOption('out', defaultsTo: '.dart_tool/test-quality-audit')
     ..addOption('max-bytes', defaultsTo: '1048576')
     ..addOption(
@@ -34,9 +38,12 @@ Future<void> main(List<String> arguments) async {
     )
     ..addOption(
       'mcp-config',
-      help: 'MCP JSON config containing the registered Substrate HTTP server.',
+      help: 'Caller-supplied MCP JSON config (relative to target repository).',
     )
-    ..addOption('server', defaultsTo: 'substrate')
+    ..addOption('server', help: 'Required MCP server entry for run.')
+    ..addOption('service', help: 'Required classifier service name for run.')
+    ..addOption('provider', help: 'Required expected provider for run.')
+    ..addOption('model', help: 'Required expected model for run.')
     ..addOption(
       'cold-timeout',
       defaultsTo: '120',
@@ -100,9 +107,32 @@ Future<void> main(List<String> arguments) async {
       return value;
     }
 
-    final output = Directory(p.absolute(options.option('out')!))
-      ..createSync(recursive: true);
+    final root = Directory(
+      p.absolute(options.option('project') ?? Directory.current.path),
+    ).resolveSymbolicLinksSync();
+    // All mutable review state belongs to this repository, never the installation.
+    final outputPath = p.normalize(p.join(root, options.option('out')!));
+    if (!p.isWithin(root, outputPath)) {
+      throw const FormatException('--out must be inside the target repository');
+    }
+    var ancestor = outputPath;
+    while (!Directory(ancestor).existsSync()) {
+      ancestor = p.dirname(ancestor);
+    }
+    final resolvedAncestor = Directory(ancestor).resolveSymbolicLinksSync();
+    if (resolvedAncestor != root && !p.isWithin(root, resolvedAncestor)) {
+      throw const FormatException('--out must not escape through a symlink');
+    }
+    final output = Directory(outputPath)..createSync(recursive: true);
     final manifestFile = File(p.join(output.path, 'manifest.json'));
+    if (manifestFile.existsSync()) {
+      final previous = jsonDecode(manifestFile.readAsStringSync()) as Map;
+      if (previous['root'] != root) {
+        throw const FormatException(
+          'Review state belongs to a different repository; use a fresh output directory',
+        );
+      }
+    }
     late Map<String, dynamic> manifest;
     if (command == 'build' ||
         (command == 'run' && options.multiOption('file').isNotEmpty)) {
@@ -115,7 +145,8 @@ Future<void> main(List<String> arguments) async {
         Platform.script.resolve('test_quality_audit/questions.json'),
       );
       manifest = buildAudit(
-        root: Directory.current.path,
+        root: root,
+        model: options.option('model'),
         files: options.multiOption('file').toSet().toList(),
         names: options.multiOption('name'),
         questions:
@@ -219,12 +250,29 @@ Future<void> main(List<String> arguments) async {
           '--mcp-config is required for run; no classifier endpoint or credentials are embedded',
         );
       }
-      final config = jsonDecode(File(configPath).readAsStringSync()) as Map;
-      final server =
-          (config['mcpServers'] as Map)[options.option('server')] as Map?;
+      String requiredOption(String name) {
+        final value = options.option(name);
+        if (value == null || value.isEmpty) {
+          throw FormatException('--$name is required for run');
+        }
+        return value;
+      }
+
+      final serverName = requiredOption('server');
+      final serviceName = requiredOption('service');
+      final provider = requiredOption('provider');
+      final model = requiredOption('model');
+      if (manifest['model'] != model) {
+        throw const FormatException(
+          'Rebuild packets with --model matching the selected classifier before run',
+        );
+      }
+      final config =
+          jsonDecode(File(p.join(root, configPath)).readAsStringSync()) as Map;
+      final server = (config['mcpServers'] as Map)[serverName] as Map?;
       if (server == null || server['url'] is! String) {
         throw const FormatException(
-          'Configured Substrate server must provide an HTTP MCP url',
+          'Configured MCP server must provide an HTTP MCP url',
         );
       }
       final uri = Uri.parse(server['url'] as String);
@@ -272,7 +320,7 @@ Future<void> main(List<String> arguments) async {
               structured ??
               jsonDecode(result.content.whereType<TextContent>().first.text);
           if (value is! Map<String, dynamic>) {
-            throw const FormatException('Unexpected Substrate response');
+            throw const FormatException('Unexpected MCP response');
           }
           return value;
         }
@@ -281,17 +329,27 @@ Future<void> main(List<String> arguments) async {
           'name': 'get_service',
         }, const Duration(seconds: 30));
         final service = await call('get_service', {
-          'name': 'classifier',
+          'name': serviceName,
         }, const Duration(seconds: 30));
-        validateLocalService(service);
+        validateClassifierService(service, provider: provider, model: model);
         final schema = await call('get_tool', {
           'name': 'create_classification',
         }, const Duration(seconds: 30));
         if (schema['success'] != true) {
           throw const FormatException(
-            'Substrate classification tool is unavailable',
+            'Compatible classification tool is unavailable',
           );
         }
+        for (final row in manifest['tests'] as List) {
+          row['expectedClassifier'] = {
+            'server': serverName,
+            'endpointHash': digest(uri.toString()),
+            'service': serviceName,
+            'provider': provider,
+            'model': model,
+          };
+        }
+        saveJson(manifestFile, manifest);
         await classifyAudit(
           manifest: manifest,
           output: output,
@@ -300,7 +358,7 @@ Future<void> main(List<String> arguments) async {
           coldTimeout: Duration(seconds: positive('cold-timeout')),
           timeout: Duration(seconds: positive('timeout')),
           classify: (request, timeout) => call('create_classification', {
-            'service': 'classifier',
+            'service': serviceName,
             'request': request,
             'timeoutMs': timeout.inMilliseconds,
           }, timeout + const Duration(seconds: 10)),
@@ -348,16 +406,20 @@ Future<void> main(List<String> arguments) async {
   }
 }
 
-void validateLocalService(Map<String, dynamic> service) {
+void validateClassifierService(
+  Map<String, dynamic> service, {
+  required String provider,
+  required String model,
+}) {
   final data = service['data'] as Map?;
   final config = data?['classifierConfig'] as Map?;
   if (service['success'] != true ||
       data?['enabled'] != true ||
       data?['serviceType'] != 'classifier' ||
-      config?['provider'] != 'vllmDecision' ||
-      config?['model'] != 'qwen3.8-sw') {
+      config?['provider'] != provider ||
+      config?['model'] != model) {
     throw const FormatException(
-      'Refusing inference: classifier must be enabled local vllmDecision/qwen3.8-sw; no paid fallback',
+      'Refusing inference: service must be enabled and match the caller-selected provider/model; no fallback',
     );
   }
 }

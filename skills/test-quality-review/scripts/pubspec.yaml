@@ -1,6 +1,6 @@
 name: test_quality_review
 publish_to: none
-description: Standalone Dart test-quality review tools adapted from nt_helper.
+description: Standalone review-only Dart test-quality tools.
 version: 0.1.0
 environment:
   sdk: '>=3.11.0 <4.0.0'

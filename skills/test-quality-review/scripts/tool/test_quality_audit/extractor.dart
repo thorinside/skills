@@ -125,6 +125,7 @@ Map<String, dynamic> buildAudit({
   List<String> contexts = const [],
   List<String> names = const [],
   int maxBytes = 1048576,
+  String? model,
 }) {
   if (contexts.isNotEmpty) {
     throw const FormatException('Audit packets accept test files only');
@@ -142,7 +143,7 @@ Map<String, dynamic> buildAudit({
         continue;
       }
       final request = <String, dynamic>{
-        'model': 'qwen3.8-sw',
+        if (model != null) 'model': model,
         'input': {
           'testFile': source,
           'file': relative,
@@ -175,7 +176,7 @@ Map<String, dynamic> buildAudit({
   return {
     'version': 2,
     'root': root,
-    'model': 'qwen3.8-sw',
+    if (model != null) 'model': model,
     'maxBytes': maxBytes,
     'originals': originals,
     'tests': rows,

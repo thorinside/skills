@@ -5,14 +5,16 @@ description: Review a project's tests during development to identify redundant o
 
 # Test quality review
 
-Review the requested change or selected tests, using the existing nt_helper audit's
-keep/remove/tighten criteria. Classifier labels are advisory candidates; the agent
+Review the requested change or selected tests using keep/remove/tighten criteria. Classifier labels are advisory candidates; the agent
 supplies source-grounded explanations. This skill never edits target tests.
 
 ## 1. Bound the review
 
-Read the project's local instructions and confirm repository identity, working-tree
-status, requested change, and exact test selection. Preserve other agents' work.
+Resolve the target from the caller's explicit project path, or their working
+directory when omitted; never from this skill's installation directory. A single
+global installation serves multiple repositories without copying it into each.
+Read the target project's local instructions and confirm repository identity,
+working-tree status, requested change, and exact test selection. Preserve other agents' work.
 Ask before expanding coverage beyond the requested change. Default to the tests
 associated with that change, not a repository-wide audit.
 
@@ -37,7 +39,7 @@ and assertions detect the same failure. Similar titles or overlapping lines are 
 proof. Keep rare errors, race boundaries, wire contracts, accessibility and layout
 geometry when they protect actual requirements. Specificity alone is not weakness.
 
-Review against Neal's rules:
+Apply these four testing rules:
 
 - Every new test names its requirement or distinct regression **and explains why
   existing coverage is insufficient**.
@@ -51,9 +53,11 @@ Review against Neal's rules:
 
 For selected Dart/Flutter tests, read
 [`scripts/tool/test_quality_audit/README.md`](scripts/tool/test_quality_audit/README.md)
-for standalone setup and build/run/report commands. The bundled extractor and
-budgeter are adapted from an **uncommitted, in-progress** nt_helper snapshot; see
-[`references/PROVENANCE.md`](references/PROVENANCE.md).
+for global setup and build/run/report commands. Resolve dependencies and bundled
+prompts from the installation, but configuration from the caller's target. Keep
+outputs, result caches and review state inside that target in a dedicated review
+directory; never reuse another repository's state. The CLI rejects foreign-root
+manifests and output paths escaping the target, including symlink escapes.
 
 Build packets without inference first; inspect the indicated body, loop bindings,
 included lines and omissions. The classifier sees only the test file, indicated
@@ -61,10 +65,10 @@ test, and criteria, not production source. Supply no extra source to this pipeli
 Manual review may inspect necessary implementation/contracts; distinguish that
 additional evidence from what the classifier actually saw.
 
-Discover the live Substrate tool schemas and enabled provisioned service before
-inference. The bundled adapter requires local `vllmDecision/qwen3.8-sw` and existing
-HTTP MCP configuration; no paid fallback, direct classifier endpoint, or invented
-credentials. If unavailable or incompatible, report the limitation and continue
+Before inference, inspect the caller-selected MCP server's tool schemas and
+classifier service for the documented compatible contract. Supply the MCP config,
+server entry, service, expected provider and model explicitly. Use only authorized
+settings; there is no default infrastructure, model, credentials or fallback. If unavailable or incompatible, report the limitation and continue
 manual review. Never claim inference ran when it did not.
 
 Use bounded `--limit` batches. Treat failed calls, missing context, stale hashes,

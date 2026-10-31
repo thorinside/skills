@@ -12,7 +12,7 @@ def token_counter():
         def count(value):
             text = json.dumps(value, ensure_ascii=False, separators=(',', ':'))
             return max(len(encoder.encode(text, disallowed_special=())) for encoder in encoders)
-        return count, 'max(cl100k_base,o200k_base); not the exact Qwen tokenizer'
+        return count, "max(cl100k_base,o200k_base); not the selected model\'s exact tokenizer"
     except ImportError:
         def count(value):
             return len(json.dumps(value, ensure_ascii=False, separators=(',', ':')).encode('utf-8'))

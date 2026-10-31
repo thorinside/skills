@@ -38,9 +38,14 @@ Map<String, dynamic> verdict(
   try {
     final response = saved['response'] as Map<String, dynamic>;
     final data = response['data'] as Map<String, dynamic>;
+    final expected = row['expectedClassifier'] as Map?;
     if (response['success'] != true ||
-        data['model'] != 'qwen3.8-sw' ||
-        data['provider'] != 'vllmDecision') {
+        data['model'] is! String ||
+        data['provider'] is! String ||
+        (expected != null &&
+            (data['model'] != expected['model'] ||
+                data['provider'] != expected['provider'] ||
+                jsonEncode(saved['classifier']) != jsonEncode(expected)))) {
       return {
         ...result,
         'status': 'Failed result or unexpected model/provider',
@@ -197,6 +202,7 @@ Future<void> classifyAudit({
     }
     saveJson(File(p.join(output.path, 'results', '${row['id']}.json')), {
       'requestHash': row['requestHash'],
+      'classifier': row['expectedClassifier'],
       'response': response,
       'elapsedMs': watch.elapsedMilliseconds,
     });
@@ -339,7 +345,7 @@ void writeReport(
   final lines = [
     '# Test quality audit (dry run)',
     '',
-    'Classifier: local qwen3.8-sw via Substrate. Labels only; no generated reasons.',
+    'Classifier: caller-configured (identity recorded in manifest/results). Labels only; no generated reasons.',
     'Scores are uncalibrated model output, not measured correctness probabilities.',
     'Remove-with-no-weakness contradictions are flagged and cannot be bulk-applied.',
     'Missing context, malformed/failed calls and stale results are unresolved, never removals.',
