@@ -1,6 +1,6 @@
 ---
 name: test-quality-review
-description: Review a project's tests during development to identify redundant or weak tests and explain useful distinct requirement or regression coverage. Use for test-quality reviews or classifier-assisted test triage, not automatic test deletion or unsolicited coverage expansion.
+description: Review a project's tests during development to identify redundant or weak tests and explain useful distinct requirement or regression coverage. Use for test-quality reviews or classifier-assisted test triage.
 ---
 
 # Test quality review
