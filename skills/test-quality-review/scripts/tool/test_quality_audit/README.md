@@ -43,7 +43,11 @@ into any reviewed repository. The target is `--project /path/to/repository` or t
 Relative `--file`, `--out` and `--mcp-config` paths resolve from that target;
 dependencies and prompts resolve from the absolute skill path. `--out` defaults
 to `.dart_tool/test-quality-audit` inside the target and must remain within it,
-including after symlink resolution. Each repository owns its configuration,
+including all artifact and cache paths. Symlinks beneath the target root are
+rejected, even when they point back inside it, so artifacts cannot overwrite
+source or share another review's state. Report/cache writes use fresh private
+staging files and atomic replacement rather than fixed `.tmp` paths.
+Each repository owns its configuration,
 outputs, caches and review state. A manifest bound to another canonical repository
 path is rejected even if copied in; use a fresh output directory. Installation
 `.dart_tool` contains only Dart dependencies/build tooling, never review state.
@@ -131,9 +135,10 @@ contradiction flags. Insufficient context, stale source/request hashes, missing 
 malformed replies and mismatched configured classifier identities remain unresolved. The model does
 not generate reasons; the invoking agent must explain findings from source.
 
-The retained upstream proposal planner can reject embedded/unbraced or overlapping
-remove candidates even in report-only mode. Inspect saved rows manually if that
-happens; it does not establish a successful report or authorize editing.
+Reports archive candidate bodies without constructing or validating deletion
+plans. Embedded, unbraced or overlapping registrations remain advisory findings;
+they do not prevent reporting or authorize editing. Source changes still make
+rows unresolved and exclude them from proposals.
 Classifier precision/calibration are unestablished; verify integration separately.
 
 Keep artifacts private and use the project's approved artifact location. Do not

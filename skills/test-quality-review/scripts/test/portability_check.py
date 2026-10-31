@@ -62,4 +62,32 @@ with tempfile.TemporaryDirectory(prefix='quality-portability-') as temporary:
     cli(base, 'report', '--project', b, '--out', 'escape/review', succeeds=False)
     assert not (a / 'review').exists()
     assert not (base / state).exists()
+
+    # Requirement: every CLI artifact path must reject descendant symlinks.
+    # Directory-only checks and in-process writers miss the Python budgeter's
+    # direct output path and manifest/cache reads performed by the CLI.
+    for index, artifact in enumerate([
+        'manifest.json', 'unbudgeted.json', 'budgeted.json',
+        'report.md', 'report.json', 'proposed-removals.json', 'results',
+    ]):
+        output = b / f'.dart_tool/artifact-link-{index}'
+        output.mkdir()
+        external = base / f'private-artifact-{index}'
+        if artifact == 'results':
+            external.mkdir()
+            (external / 'sentinel').write_text('private cache')
+        else:
+            external.write_text('private source')
+        (output / artifact).symlink_to(external, target_is_directory=artifact == 'results')
+        result = cli(b, 'build', '--file', 'test/example_test.dart',
+                     '--out', output, succeeds=False)
+        assert 'symlink' in result.stderr, result.stderr
+        if artifact == 'results':
+            assert [entry.name for entry in external.iterdir()] == ['sentinel']
+            assert (external / 'sentinel').read_text() == 'private cache'
+        else:
+            assert external.read_text() == 'private source'
+    assert (b / 'test/example_test.dart').read_text() == (
+        "void main() { test('distinct requirement', () { expect(1, 1); }); }\n"
+    )
 print('PASS: global CLI targets two repositories; cwd/explicit paths, state isolation, foreign manifests and output escapes checked; no inference')

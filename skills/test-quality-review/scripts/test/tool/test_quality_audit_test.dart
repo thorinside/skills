@@ -6,6 +6,7 @@ import 'package:test/test.dart';
 import 'package:path/path.dart' as p;
 
 import '../../tool/test_quality_audit.dart' show validateClassifierService;
+import '../../tool/test_quality_audit/artifacts.dart';
 import '../../tool/test_quality_audit/audit.dart';
 import '../../tool/test_quality_audit/extractor.dart';
 
@@ -29,14 +30,15 @@ void main() {
 
 void main() {
   late Directory root;
-  late Directory output;
+  late ReviewArtifacts output;
   late Map<String, dynamic> questions;
   late Map<String, dynamic> manifest;
 
   setUp(() async {
     root = await Directory.systemTemp.createTemp('test-quality-audit-');
     root = Directory(root.resolveSymbolicLinksSync());
-    output = Directory(p.join(root.path, 'audit'))..createSync();
+    output = ReviewArtifacts(root: root.path, path: p.join(root.path, 'audit'));
+    Directory(output.path).createSync();
     Directory(p.join(root.path, 'test')).createSync();
     Directory(p.join(root.path, 'lib')).createSync();
     File(
@@ -56,7 +58,7 @@ void main() {
       contexts: [],
       questions: questions,
     );
-    saveJson(File(p.join(output.path, 'manifest.json')), manifest);
+    output.writeJson('manifest.json', manifest);
   });
   tearDown(() => root.delete(recursive: true));
 
@@ -90,7 +92,7 @@ void main() {
 
   void saveDecision(int index, String decision, {double context = 0.99}) {
     final row = manifest['tests'][index] as Map;
-    saveJson(File(p.join(output.path, 'results', '${row['id']}.json')), {
+    output.writeJson('results/${row['id']}.json', {
       'requestHash': row['requestHash'],
       'response': response(decision, context: context),
     });
@@ -322,7 +324,12 @@ void main() {
     final result = auditResults(manifest, output)[1];
     expect(result['rawDisposition'], 'remove');
     expect(result['verdict'], 'unresolved');
-    expect(removalPlan(manifest, auditResults(manifest, output)), isEmpty);
+    writeReport(manifest, output);
+    final proposals = jsonDecode(
+      File(p.join(output.path, 'proposed-removals.json')).readAsStringSync(),
+    );
+    expect(proposals['tests'], isEmpty);
+    expect(proposals['files'], isEmpty);
   });
 
   test(
@@ -360,12 +367,15 @@ void main() {
       File(
         p.join(root.path, 'test/example_test.dart'),
       ).writeAsStringSync('$fixture\n// changed');
-      expect(
-        () => removalPlan(manifest, [
-          {'id': manifest['tests'][1]['id'], 'verdict': 'remove'},
-        ]),
-        throwsFormatException,
+      final changed = auditResults(manifest, output)[1];
+      expect(changed['verdict'], 'unresolved');
+      expect(changed['status'], 'Test source changed since extraction');
+      writeReport(manifest, output);
+      final proposals = jsonDecode(
+        File(p.join(output.path, 'proposed-removals.json')).readAsStringSync(),
       );
+      expect(proposals['tests'], isEmpty);
+      expect(proposals['files'], isEmpty);
     },
   );
 
@@ -395,7 +405,7 @@ void main() {
       contradictory['data']['answers']['weakness'] = response(
         'keep',
       )['data']['answers']['weakness'];
-      saveJson(File(p.join(output.path, 'results', '${row['id']}.json')), {
+      output.writeJson('results/${row['id']}.json', {
         'requestHash': row['requestHash'],
         'response': contradictory,
       });
@@ -469,13 +479,140 @@ void main() {
     },
   );
 
-  test('unbraced loop tests are identified but not unsafely deleted', () {
-    final rows = extractTests(
-      'test/bare.dart',
-      "void main() { for (final n in [1,2]) test('case', () {}); }",
+  test(
+    'advisory reporting regression: an unbraced removal candidate still produces reports',
+    () {
+      // Extractor-only coverage did not exercise the deletion planner in reporting.
+      const source =
+          "void main() { for (final n in [1,2]) test('case', () {}); }";
+      File(
+        p.join(root.path, 'test/example_test.dart'),
+      ).writeAsStringSync(source);
+      manifest = buildAudit(
+        root: root.path,
+        files: ['test/example_test.dart'],
+        questions: questions,
+      );
+      final row = manifest['tests'][0] as Map<String, dynamic>;
+      expect(row['removable'], isFalse);
+      (row['request'] as Map)['questions'] = {
+        'disposition': questions['disposition'],
+      };
+      row['requestHash'] = digest(jsonEncode(row['request']));
+      saveDecision(0, 'remove');
+      writeReport(manifest, output);
+      final report = jsonDecode(
+        File(p.join(output.path, 'report.json')).readAsStringSync(),
+      );
+      expect(report['tests'].single['verdict'], 'remove');
+      expect(report['proposedFiles'], ['test/example_test.dart']);
+      final proposals = jsonDecode(
+        File(p.join(output.path, 'proposed-removals.json')).readAsStringSync(),
+      );
+      expect(proposals['tests'].single['source'], row['source']);
+      expect(
+        File(p.join(output.path, 'report.md')).readAsStringSync(),
+        contains('case'),
+      );
+      expect(
+        () => writeReport(manifest, output, applyRemovals: true),
+        throwsFormatException,
+      );
+      expect(
+        File(p.join(root.path, 'test/example_test.dart')).readAsStringSync(),
+        source,
+      );
+    },
+  );
+
+  test(
+    'artifact containment regression: a report symlink cannot overwrite target source',
+    () {
+      // Output-directory escape checks did not cover links beneath a valid output.
+      Link(
+        p.join(output.path, 'report.md'),
+      ).createSync(p.join(root.path, 'test/example_test.dart'));
+      expect(() => writeReport(manifest, output), throwsFormatException);
+      expect(
+        File(p.join(root.path, 'test/example_test.dart')).readAsStringSync(),
+        fixture,
+      );
+    },
+  );
+
+  for (final cache in ['results', 'screen-results']) {
+    test(
+      'artifact containment requirement: $cache links cannot reuse or overwrite foreign state',
+      () async {
+        // Leaf report checks do not cover directory links in cached/archived results.
+        final foreign = Directory.systemTemp.createTempSync('foreign-review-');
+        addTearDown(() => foreign.deleteSync(recursive: true));
+        final sentinel = File(p.join(foreign.path, 'sentinel.json'))
+          ..writeAsStringSync('{"private":true}');
+        Link(p.join(output.path, cache)).createSync(foreign.path);
+        expect(
+          () => output.file('$cache/sentinel.json'),
+          throwsFormatException,
+        );
+        expect(
+          () => output.writeJson('$cache/sentinel.json', {'private': false}),
+          throwsFormatException,
+        );
+        if (cache == 'results') {
+          var calls = 0;
+          await expectLater(
+            classifyAudit(
+              manifest: manifest,
+              output: output,
+              classify: (_, _) async {
+                calls++;
+                return response('keep');
+              },
+            ),
+            throwsFormatException,
+          );
+          expect(calls, 0);
+        }
+        expect(sentinel.readAsStringSync(), '{"private":true}');
+        expect(foreign.listSync(), hasLength(1));
+      },
     );
-    expect(rows.single['removable'], isFalse);
-  });
+  }
+
+  test(
+    'artifact containment regression: legacy temporary links cannot overwrite source',
+    () {
+      // Final-path checks alone miss the old writer's fixed filename.tmp staging path.
+      Link(
+        p.join(output.path, 'report.json.tmp'),
+      ).createSync(p.join(root.path, 'test/example_test.dart'));
+      output.writeJson('report.json', {'review': 'complete'});
+      expect(jsonDecode(output.file('report.json').readAsStringSync()), {
+        'review': 'complete',
+      });
+      expect(
+        File(p.join(root.path, 'test/example_test.dart')).readAsStringSync(),
+        fixture,
+      );
+    },
+  );
+
+  test(
+    'artifact containment requirement: dangling links cannot create foreign files',
+    () {
+      // Existing-file escape coverage misses links whose destination is absent.
+      final foreign = Directory.systemTemp.createTempSync('missing-review-');
+      addTearDown(() => foreign.deleteSync(recursive: true));
+      final missing = File(p.join(foreign.path, 'missing.json'));
+      output.file('manifest.json').deleteSync();
+      Link(p.join(output.path, 'manifest.json')).createSync(missing.path);
+      expect(
+        () => output.writeJson('manifest.json', {'review': 'complete'}),
+        throwsFormatException,
+      );
+      expect(missing.existsSync(), isFalse);
+    },
+  );
 
   test('production files cannot become removal targets', () {
     expect(

@@ -47,7 +47,9 @@ No source branch switch, stash, reset, source edit, push or publication occurred
 - Changed the client identity to `test-quality-review`.
 - Rejected `--apply-removals` before artifact creation and rejected direct apply
   calls to `writeReport`; removed its target-write/delete implementation. Retained
-  source-hash-checked proposal planning as review evidence only.
+  candidate bodies as review evidence only. The review fixes remove deletion
+  planning entirely, so advisory reporting accepts unbraced/embedded candidates
+  while preserving stale-source checks.
 - Adapted the two upstream successful-deletion scenarios to protect explicit apply
   refusal and unanimous whole-file remove refusal. Comments name why existing
   single-path coverage is insufficient. No additional test scenarios were added.

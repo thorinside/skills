@@ -5,6 +5,7 @@ import 'package:args/args.dart';
 import 'package:mcp_dart/mcp_dart.dart';
 import 'package:path/path.dart' as p;
 
+import 'test_quality_audit/artifacts.dart';
 import 'test_quality_audit/audit.dart';
 import 'test_quality_audit/extractor.dart';
 
@@ -111,20 +112,12 @@ Future<void> main(List<String> arguments) async {
       p.absolute(options.option('project') ?? Directory.current.path),
     ).resolveSymbolicLinksSync();
     // All mutable review state belongs to this repository, never the installation.
-    final outputPath = p.normalize(p.join(root, options.option('out')!));
-    if (!p.isWithin(root, outputPath)) {
-      throw const FormatException('--out must be inside the target repository');
-    }
-    var ancestor = outputPath;
-    while (!Directory(ancestor).existsSync()) {
-      ancestor = p.dirname(ancestor);
-    }
-    final resolvedAncestor = Directory(ancestor).resolveSymbolicLinksSync();
-    if (resolvedAncestor != root && !p.isWithin(root, resolvedAncestor)) {
-      throw const FormatException('--out must not escape through a symlink');
-    }
-    final output = Directory(outputPath)..createSync(recursive: true);
-    final manifestFile = File(p.join(output.path, 'manifest.json'));
+    final output = ReviewArtifacts(
+      root: root,
+      path: p.join(root, options.option('out')!),
+    );
+    Directory(output.path).createSync(recursive: true);
+    final manifestFile = output.file('manifest.json');
     if (manifestFile.existsSync()) {
       final previous = jsonDecode(manifestFile.readAsStringSync()) as Map;
       if (previous['root'] != root) {
@@ -154,9 +147,9 @@ Future<void> main(List<String> arguments) async {
                 as Map<String, dynamic>,
         maxBytes: positive('max-bytes'),
       );
-      final rawFile = File(p.join(output.path, 'unbudgeted.json'));
-      final budgetedFile = File(p.join(output.path, 'budgeted.json'));
-      saveJson(rawFile, manifest);
+      final rawFile = output.file('unbudgeted.json');
+      final budgetedFile = output.file('budgeted.json');
+      output.writeJson('unbudgeted.json', manifest);
       final budgetScript = File.fromUri(
         Platform.script.resolve('test_quality_audit/budget.py'),
       );
@@ -189,13 +182,14 @@ Future<void> main(List<String> arguments) async {
       }
       stdout.write(budgetResult.stdout);
       manifest =
-          jsonDecode(budgetedFile.readAsStringSync()) as Map<String, dynamic>;
+          jsonDecode(output.file('budgeted.json').readAsStringSync())
+              as Map<String, dynamic>;
       for (final row in manifest['tests'] as List) {
         row['requestHash'] = digest(jsonEncode(row['request']));
       }
-      saveJson(manifestFile, manifest);
-      rawFile.deleteSync();
-      budgetedFile.deleteSync();
+      output.writeJson('manifest.json', manifest);
+      output.file('unbudgeted.json').deleteSync();
+      output.file('budgeted.json').deleteSync();
     } else {
       manifest =
           jsonDecode(manifestFile.readAsStringSync()) as Map<String, dynamic>;
@@ -217,7 +211,7 @@ Future<void> main(List<String> arguments) async {
         row['requestHash'] = digest(jsonEncode(request));
       }
       manifest['verdictOnly'] = true;
-      saveJson(manifestFile, manifest);
+      output.writeJson('manifest.json', manifest);
     }
     if (options.flag('verify-removals')) {
       final fullQuestions =
@@ -232,16 +226,13 @@ Future<void> main(List<String> arguments) async {
         final previous = readResult(output, row['id'] as String);
         final result = verdict(row, previous);
         if (result['screenOnly'] == true && result['verdict'] == 'remove') {
-          saveJson(
-            File(p.join(output.path, 'screen-results', '${row['id']}.json')),
-            previous!,
-          );
+          output.writeJson('screen-results/${row['id']}.json', previous!);
           row['screenDisposition'] = result['verdict'];
           (row['request'] as Map)['questions'] = fullQuestions;
           row['requestHash'] = digest(jsonEncode(row['request']));
         }
       }
-      saveJson(manifestFile, manifest);
+      output.writeJson('manifest.json', manifest);
     }
     if (command == 'run') {
       final configPath = options.option('mcp-config');
@@ -349,7 +340,7 @@ Future<void> main(List<String> arguments) async {
             'model': model,
           };
         }
-        saveJson(manifestFile, manifest);
+        output.writeJson('manifest.json', manifest);
         await classifyAudit(
           manifest: manifest,
           output: output,
@@ -374,7 +365,7 @@ Future<void> main(List<String> arguments) async {
       applyRemovals: options.flag('apply-removals'),
     );
     final results =
-        (jsonDecode(File(p.join(output.path, 'report.json')).readAsStringSync())
+        (jsonDecode(output.file('report.json').readAsStringSync())
                 as Map)['tests']
             as List;
     final counts = <String, int>{};

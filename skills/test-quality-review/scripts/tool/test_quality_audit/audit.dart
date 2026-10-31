@@ -1,8 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:path/path.dart' as p;
-
+import 'artifacts.dart';
 import 'extractor.dart';
 
 typedef Classify =
@@ -127,8 +126,8 @@ Map<String, dynamic> verdict(
 bool validProbability(dynamic value) =>
     value is num && value.isFinite && value >= 0 && value <= 1;
 
-Map<String, dynamic>? readResult(Directory output, String id) {
-  final file = File(p.join(output.path, 'results', '$id.json'));
+Map<String, dynamic>? readResult(ReviewArtifacts output, String id) {
+  final file = output.file('results/$id.json');
   if (!file.existsSync()) {
     return null;
   }
@@ -139,18 +138,9 @@ Map<String, dynamic>? readResult(Directory output, String id) {
   }
 }
 
-void saveJson(File file, Object value) {
-  file.parent.createSync(recursive: true);
-  final temporary = File('${file.path}.tmp');
-  temporary.writeAsStringSync(
-    '${const JsonEncoder.withIndent('  ').convert(value)}\n',
-  );
-  temporary.renameSync(file.path);
-}
-
 Future<void> classifyAudit({
   required Map<String, dynamic> manifest,
-  required Directory output,
+  required ReviewArtifacts output,
   required Classify classify,
   int? limit,
   int concurrency = 1,
@@ -200,7 +190,7 @@ Future<void> classifyAudit({
     if (consecutiveFailures >= 3) {
       stopped = true;
     }
-    saveJson(File(p.join(output.path, 'results', '${row['id']}.json')), {
+    output.writeJson('results/${row['id']}.json', {
       'requestHash': row['requestHash'],
       'classifier': row['expectedClassifier'],
       'response': response,
@@ -228,7 +218,7 @@ Future<void> classifyAudit({
 
 List<Map<String, dynamic>> auditResults(
   Map<String, dynamic> manifest,
-  Directory output,
+  ReviewArtifacts output,
 ) {
   final hashes = <String, String?>{};
   String? currentHash(String path) => hashes.putIfAbsent(path, () {
@@ -257,63 +247,9 @@ List<Map<String, dynamic>> auditResults(
   ];
 }
 
-/// Return an exact, source-hash-checked deletion plan before writing any source.
-Map<String, String> removalPlan(
-  Map<String, dynamic> manifest,
-  List<Map<String, dynamic>> results,
-) {
-  final root = manifest['root'] as String;
-  final remove = {
-    for (final result in results)
-      if (result['verdict'] == 'remove') result['id'],
-  };
-  final grouped = <String, List<Map<String, dynamic>>>{};
-  for (final raw in manifest['tests'] as List) {
-    final row = raw as Map<String, dynamic>;
-    if (!remove.contains(row['id'])) {
-      continue;
-    }
-    if (row['removable'] != true) {
-      throw FormatException(
-        'Cannot safely remove unbraced/embedded test: ${row['file']}:${row['line']}',
-      );
-    }
-    (grouped[row['file'] as String] ??= []).add(row);
-  }
-  final planned = <String, String>{};
-  for (final entry in grouped.entries) {
-    final file = checkedTestPath(root, entry.key);
-    final source = File(file).readAsStringSync();
-    final rows = entry.value
-      ..sort((a, b) => (b['start'] as int).compareTo(a['start'] as int));
-    if (rows.any((row) => digest(source) != row['sourceHash'])) {
-      throw FormatException(
-        'Source changed since classification: ${entry.key}',
-      );
-    }
-    var updated = source;
-    var previousStart = source.length;
-    for (final row in rows) {
-      final start = row['start'] as int;
-      final end = row['end'] as int;
-      if (start < 0 ||
-          end > previousStart ||
-          source.substring(start, end) != row['source']) {
-        throw const FormatException('Overlapping or invalid deletion ranges');
-      }
-      updated = updated.replaceRange(start, end, '');
-      previousStart = start;
-    }
-    // Parse the resulting Dart before any file is changed.
-    extractTests(entry.key, updated);
-    planned[entry.key] = updated;
-  }
-  return planned;
-}
-
 void writeReport(
   Map<String, dynamic> manifest,
-  Directory output, {
+  ReviewArtifacts output, {
   bool applyRemovals = false,
 }) {
   if (applyRemovals) {
@@ -322,7 +258,6 @@ void writeReport(
     );
   }
   final results = auditResults(manifest, output);
-  final plan = removalPlan(manifest, results);
   final removed = (manifest['tests'] as List)
       .where(
         (row) => results.any(
@@ -330,15 +265,16 @@ void writeReport(
         ),
       )
       .toList();
-  saveJson(File(p.join(output.path, 'proposed-removals.json')), {
+  final proposedFiles = removed.map((row) => row['file']).toSet().toList();
+  output.writeJson('proposed-removals.json', {
     'tests': removed,
-    'files': plan.keys.toList(),
+    'files': proposedFiles,
   });
   // Review artifacts only. The skill never writes or deletes target tests.
-  saveJson(File(p.join(output.path, 'report.json')), {
+  output.writeJson('report.json', {
     'mode': 'dry-run',
     'tests': results,
-    'proposedFiles': plan.keys.toList(),
+    'proposedFiles': proposedFiles,
   });
   String cell(Object? value) =>
       (value ?? '—').toString().replaceAll('|', '\\|').replaceAll('\n', ' ');
@@ -359,5 +295,5 @@ void writeReport(
     'Advisory review only: no target tests, commits or merges are changed. Verify each candidate against distinct requirements and retained coverage.',
     '',
   ];
-  File(p.join(output.path, 'report.md')).writeAsStringSync(lines.join('\n'));
+  output.writeText('report.md', lines.join('\n'));
 }
