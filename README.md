@@ -10,6 +10,7 @@ Agent skills, packaged both as a **Claude Code plugin** and in the standard
 | [`decision-free-specs`](skills/decision-free-specs/SKILL.md) | Write refactor specs/plans that resolve as many architectural and implementation decisions as possible so any suitable coding model—including a small one—can execute the work mechanically. Language-agnostic workflow; per-language AST inventory tools replace the expensive read-the-codebase step (TypeScript, Python, Rust, Flutter/Dart, and Go included, each behind a documented contract). |
 | [`memory-collector`](skills/memory-collector/SKILL.md) | Harvest coding-agent session transcripts already on disk into persistent memory: topics, people, facts, events, quotes. Bundled dependency-free Node readers parse each tool's store (Claude Code JSONL, Pi/OMP JSONL, Codex SQLite+rollouts — ported from EI's readers, verified on live data). Cursor-tracked, budgeted, read-only on sources, secrets dropped. Ships Jeremy Scherer's extraction prompts from [Flare576/ei](https://github.com/Flare576/ei) (MIT). Pairs with `memory-gardener` — the collector plants, the gardener prunes. |
 | [`memory-gardener`](skills/memory-gardener/SKILL.md) | Periodic hygiene ceremony over whatever persistent memory the agent can reach (vector stores, knowledge graphs, diaries): dedup, decay, split bloat, invalidate superseded facts, reconnect orphans, summarize, report. Storage-agnostic — discovers capabilities from the tool surface; safe ops auto-applied, destructive ops only proposed. Ships Jeremy Scherer's battle-tested ceremony prompts (dedup curator, validate gate, confirmed merge, bloat scan/split) from [Flare576/ei](https://github.com/Flare576/ei) (MIT). |
+| [`test-quality-review`](skills/test-quality-review/SKILL.md) | Review tests in any language for weak assertions, proven redundancy, or distinct requirement/regression coverage; optionally use an available system-one decision API. |
 | [`think-tank`](skills/think-tank/SKILL.md) | Harden specs through the grill-with-docs interview loop plus sequential Substrate specialist jobs, producing ADRs, glossary updates, evidence artifacts, and a grill log without taking decisions away from the user. |
 
 ## Install
@@ -58,6 +59,10 @@ skills/
                        curator/gate/confirmed-merge, bloat scan/split
   think-tank/
     SKILL.md           evidence-backed spec hardening with Substrate specialist jobs
+  test-quality-review/
+    SKILL.md           scoped, evidence-grounded test-quality review
+    scripts/           language-neutral source packets, budgeting, and reports
+    references/        system-one decision API workflow
 ```
 
 ## License
